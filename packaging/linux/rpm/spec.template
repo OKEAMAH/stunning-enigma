@@ -1,0 +1,16 @@
+Name: @@NAME@@
+Version: @@VERSION@@
+Release: 1
+Summary: The Keybase Go client, filesystem, and GUI
+License: BSD
+AutoReqProv: no
+@@DEPENDENCIES@@
+
+%description
+The Keybase Go client, filesystem, and GUI
+
+%install
+mkdir -p "$RPM_BUILD_ROOT"
+cp -r "@@COPIED_BINARIES@@"/* "$RPM_BUILD_ROOT"
+
+# The files list and postinstall script get appended below.
