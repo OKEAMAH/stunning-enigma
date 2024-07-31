@@ -1,0 +1,13 @@
+.register-row {
+  background-color: var(--color-white);
+
+  &:hover {
+    background-color: var(--color-blueLighter2);
+    .register-background {
+      opacity: 0;
+    }
+    .register-icon {
+      transform: translateX(15px);
+    }
+  }
+}
