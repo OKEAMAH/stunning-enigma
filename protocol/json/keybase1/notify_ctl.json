@@ -1,0 +1,165 @@
+{
+  "protocol": "notifyCtl",
+  "imports": [
+    {
+      "path": "common.avdl",
+      "type": "idl"
+    }
+  ],
+  "types": [
+    {
+      "type": "record",
+      "name": "NotificationChannels",
+      "fields": [
+        {
+          "type": "boolean",
+          "name": "session"
+        },
+        {
+          "type": "boolean",
+          "name": "users"
+        },
+        {
+          "type": "boolean",
+          "name": "kbfs"
+        },
+        {
+          "type": "boolean",
+          "name": "kbfsdesktop"
+        },
+        {
+          "type": "boolean",
+          "name": "kbfslegacy"
+        },
+        {
+          "type": "boolean",
+          "name": "kbfssubscription"
+        },
+        {
+          "type": "boolean",
+          "name": "notifysimplefs"
+        },
+        {
+          "type": "boolean",
+          "name": "tracking"
+        },
+        {
+          "type": "boolean",
+          "name": "favorites"
+        },
+        {
+          "type": "boolean",
+          "name": "paperkeys"
+        },
+        {
+          "type": "boolean",
+          "name": "keyfamily"
+        },
+        {
+          "type": "boolean",
+          "name": "service"
+        },
+        {
+          "type": "boolean",
+          "name": "app"
+        },
+        {
+          "type": "boolean",
+          "name": "chat"
+        },
+        {
+          "type": "boolean",
+          "name": "pgp"
+        },
+        {
+          "type": "boolean",
+          "name": "kbfsrequest"
+        },
+        {
+          "type": "boolean",
+          "name": "badges"
+        },
+        {
+          "type": "boolean",
+          "name": "reachability"
+        },
+        {
+          "type": "boolean",
+          "name": "team"
+        },
+        {
+          "type": "boolean",
+          "name": "ephemeral"
+        },
+        {
+          "type": "boolean",
+          "name": "teambot"
+        },
+        {
+          "type": "boolean",
+          "name": "chatkbfsedits"
+        },
+        {
+          "type": "boolean",
+          "name": "chatdev"
+        },
+        {
+          "type": "boolean",
+          "name": "chatemoji"
+        },
+        {
+          "type": "boolean",
+          "name": "chatemojicross"
+        },
+        {
+          "type": "boolean",
+          "name": "deviceclone"
+        },
+        {
+          "type": "boolean",
+          "name": "chatattachments"
+        },
+        {
+          "type": "boolean",
+          "name": "wallet"
+        },
+        {
+          "type": "boolean",
+          "name": "audit"
+        },
+        {
+          "type": "boolean",
+          "name": "runtimestats"
+        },
+        {
+          "type": "boolean",
+          "name": "featuredBots"
+        },
+        {
+          "type": "boolean",
+          "name": "saltpack"
+        },
+        {
+          "type": "boolean",
+          "name": "allowChatNotifySkips"
+        },
+        {
+          "type": "boolean",
+          "name": "chatarchive"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "setNotifications": {
+      "request": [
+        {
+          "name": "channels",
+          "type": "NotificationChannels"
+        }
+      ],
+      "response": null
+    }
+  },
+  "namespace": "keybase.1"
+}
