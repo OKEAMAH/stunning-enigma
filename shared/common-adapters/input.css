@@ -1,0 +1,13 @@
+input,
+textarea {
+  .darkMode & {
+    background-color: var(--color-white);
+  }
+}
+
+input,
+textarea {
+  &::-webkit-input-placeholder {
+    color: var(--color-black_40);
+  }
+}
