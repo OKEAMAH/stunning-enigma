@@ -1,0 +1,107 @@
+{
+  "protocol": "test",
+  "imports": [],
+  "types": [
+    {
+      "type": "record",
+      "name": "Test",
+      "fields": [
+        {
+          "type": "string",
+          "name": "reply"
+        }
+      ],
+      "doc": "Result from calling test(..)."
+    },
+    {
+      "type": "record",
+      "name": "Generic",
+      "fields": [
+        {
+          "type": {
+            "type": "map",
+            "values": "Generic",
+            "keys": "string"
+          },
+          "name": "m"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "Generic"
+          },
+          "name": "a"
+        },
+        {
+          "type": [
+            null,
+            "string"
+          ],
+          "name": "s"
+        },
+        {
+          "type": [
+            null,
+            "int"
+          ],
+          "name": "i"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "test": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "response": "Test",
+      "doc": "Call test method.\n    Will trigger the testCallback method, whose result will be set in the\n    returned Test object, reply property."
+    },
+    "testCallback": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "response": "string",
+      "doc": "This is a service callback triggered from test(..).\n    The name param is what was passed into test."
+    },
+    "panic": {
+      "request": [
+        {
+          "name": "message",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "For testing crashes."
+    },
+    "testAirdropReg": {
+      "request": [],
+      "response": null,
+      "doc": "For testing airdrop reg."
+    },
+    "echo": {
+      "request": [
+        {
+          "name": "arg",
+          "type": "Generic"
+        }
+      ],
+      "response": "Generic"
+    }
+  },
+  "namespace": "keybase.1"
+}
