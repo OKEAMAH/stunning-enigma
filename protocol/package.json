@@ -1,0 +1,31 @@
+{
+  "name": "keybase-protocol",
+  "version": "1.0.0",
+  "description": "An IDL and protocol generator for Keybase components",
+  "main": "bin/compile.iced",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keybase/protocol"
+  },
+  "author": "Maxwell Krohn <max@keybase.io>",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/keybase/protocol/issues"
+  },
+  "homepage": "https://github.com/keybase/protocol",
+  "dependencies": {
+    "avdl-compiler": "1.4.10",
+    "avdl2json": "2.2.5",
+    "camelcase": "6.3.0",
+    "iced-coffee-script": "108.0.14",
+    "iced-error": "0.0.13",
+    "iced-logger": "0.0.6",
+    "iced-runtime": "1.0.4",
+    "iced-utils": "0.1.27",
+    "json5": "2.2.3",
+    "prettier": "2.6.2"
+  }
+}
