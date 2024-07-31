@@ -1,0 +1,1523 @@
+@namespace("chat.1")
+
+protocol local {
+  import idl "../gregor1" as gregor1;
+  import idl "../keybase1" as keybase1;
+  import idl "../stellar1" as stellar1;
+  import idl "common.avdl";
+  import idl "chat_ui.avdl";
+  import idl "unfurl.avdl";
+  import idl "commands.avdl";
+
+  @typedef("string") record VersionKind {}
+
+  enum TextPaymentResultTyp {
+    SENT_0,
+    ERROR_1
+  }
+
+  variant TextPaymentResult switch (TextPaymentResultTyp resultTyp) {
+  case ERROR: string;
+  case SENT: stellar1.PaymentID;
+  }
+
+  record TextPayment {
+    string username;
+    string paymentText;
+    TextPaymentResult result;
+  }
+
+  record KnownUserMention {
+    string text;
+    gregor1.UID uid;
+  }
+
+  record KnownTeamMention {
+    string name;
+    string channel;
+  }
+
+  record MaybeMention {
+    string name;
+    string channel;
+  }
+
+  record Coordinate {
+    double lat;
+    double lon;
+    double accuracy;
+  }
+
+  record LiveLocation {
+    gregor1.Time endTime;
+  }
+
+  record MessageText {
+    string body;
+    array<TextPayment> payments;
+    union { null, MessageID } replyTo;
+    union { null, gregor1.UID } replyToUID;
+    array<KnownUserMention> userMentions;
+    array<KnownTeamMention> teamMentions;
+    union { null, LiveLocation } liveLocation;
+    map<string, HarvestedEmoji> emojis;
+  }
+
+  record MessageConversationMetadata {
+    string conversationTitle;
+  }
+
+  record MessageEdit {
+    MessageID messageID;
+    string body;
+    array<KnownUserMention> userMentions;
+    array<KnownTeamMention> teamMentions;
+    map<string, HarvestedEmoji> emojis;
+  }
+
+  record MessageDelete {
+    array<MessageID> messageIDs;
+  }
+
+  record MessageHeadline {
+    string headline;
+    map<string, HarvestedEmoji> emojis;
+  }
+
+  record MessageFlip {
+    string text;
+    FlipGameID gameID;
+    ConversationID flipConvID;
+    array<KnownUserMention> userMentions;
+    array<KnownTeamMention> teamMentions;
+  }
+
+  record MessagePin {
+    MessageID msgID;
+  }
+
+  enum MessageSystemType {
+    ADDEDTOTEAM_0,
+    INVITEADDEDTOTEAM_1,
+    COMPLEXTEAM_2,
+    CREATETEAM_3,
+    GITPUSH_4,
+    CHANGEAVATAR_5,
+    CHANGERETENTION_6,
+    BULKADDTOCONV_7,
+    SBSRESOLVE_8,
+    NEWCHANNEL_9
+  }
+
+  record MessageSystemAddedToTeam {
+    string team;
+    string adder;
+    string addee;
+    keybase1.TeamRole role;
+    array<string> bulkAdds;
+  }
+
+  record MessageSystemInviteAddedToTeam {
+    string team;
+    string inviter;
+    string invitee;
+    string adder;
+    keybase1.TeamInviteCategory inviteType;
+    keybase1.TeamRole role;
+  }
+
+  record MessageSystemComplexTeam {
+    string team;
+  }
+
+  record MessageSystemCreateTeam {
+    string team;
+    string creator;
+  }
+
+  record MessageSystemGitPush {
+    string team;
+    string pusher;
+    string repoName;
+    keybase1.RepoID repoID;
+    array<keybase1.GitRefMetadata> refs;
+    keybase1.GitPushType pushType;
+    string previousRepoName;
+  }
+
+  record MessageSystemChangeAvatar {
+    string team;
+    string user;
+  }
+
+  record MessageSystemChangeRetention {
+    boolean isTeam;
+    boolean isInherit;
+    ConversationMembersType membersType;
+    RetentionPolicy policy;
+    string user;
+  }
+
+  record MessageSystemBulkAddToConv {
+    array<string> usernames;
+  }
+
+  record MessageSystemSbsResolve {
+    string assertionService;
+    string assertionUsername;
+    string prover;
+  }
+
+  record MessageSystemNewChannel {
+    string creator;
+    // CLI renders the name at creation
+    string nameAtCreation;
+    ConversationID convID;
+    // Grouped channel created at the same time
+    array<ConversationID> convIDs;
+  }
+
+  variant MessageSystem switch (MessageSystemType systemType) {
+    case ADDEDTOTEAM: MessageSystemAddedToTeam;
+    case INVITEADDEDTOTEAM: MessageSystemInviteAddedToTeam;
+    case COMPLEXTEAM: MessageSystemComplexTeam;
+    case CREATETEAM: MessageSystemCreateTeam;
+    case GITPUSH: MessageSystemGitPush;
+    case CHANGEAVATAR: MessageSystemChangeAvatar;
+    case CHANGERETENTION: MessageSystemChangeRetention;
+    case BULKADDTOCONV: MessageSystemBulkAddToConv;
+    case SBSRESOLVE: MessageSystemSbsResolve;
+    case NEWCHANNEL: MessageSystemNewChannel;
+  }
+
+  record MessageDeleteHistory {
+    // Delete messages up to this ID (exclusive).
+    MessageID upto;
+  }
+
+  record MessageAttachment {
+    Asset object;                // the primary attachment object (can be empty)
+    union {null, Asset} preview; // the (optional) preview of object    (V1)
+    array<Asset> previews;       // the previews of object              (V2)
+    bytes metadata;              // generic metadata (msgpack)
+    boolean uploaded;            // true if assets have been uploaded   (V2)
+    array<KnownUserMention> userMentions;
+    array<KnownTeamMention> teamMentions;
+    map<string, HarvestedEmoji> emojis;
+  }
+
+  record MessageAttachmentUploaded {
+    MessageID messageID;
+    Asset object;                // the primary attachment object
+    array<Asset> previews;       // the previews of object
+    bytes metadata;              // generic metadata (msgpack)
+  }
+
+  record MessageJoin {
+    array<string> joiners;
+    array<string> leavers;
+  }
+
+  record MessageLeave { }
+
+  record MessageReaction {
+     @mpackkey("m") @jsonkey("m")
+     MessageID messageID;
+     @mpackkey("b") @jsonkey("b")
+     string body; // emoji reaction :+1:
+     @mpackkey("t") @jsonkey("t")
+     union { null, gregor1.UID } targetUID;
+     @mpackkey("e") @jsonkey("e")
+    map<string, HarvestedEmoji> emojis;
+  }
+
+  record MessageSendPayment {
+    stellar1.PaymentID paymentID;
+  }
+
+  record MessageRequestPayment {
+    stellar1.KeybaseRequestID requestID;
+    string note;
+  }
+
+  record MessageUnfurl {
+    UnfurlResult unfurl;
+    MessageID messageID;
+  }
+
+  variant MessageBody switch (MessageType messageType) {
+    case TEXT: MessageText;
+    case ATTACHMENT: MessageAttachment;
+    case EDIT: MessageEdit;
+    case DELETE: MessageDelete;
+    case METADATA: MessageConversationMetadata;
+    case HEADLINE: MessageHeadline;
+    case ATTACHMENTUPLOADED: MessageAttachmentUploaded;
+    case JOIN: MessageJoin;
+    case LEAVE: MessageLeave;
+    case SYSTEM: MessageSystem;
+    case DELETEHISTORY: MessageDeleteHistory;
+    case REACTION: MessageReaction;
+    case SENDPAYMENT: MessageSendPayment;
+    case REQUESTPAYMENT: MessageRequestPayment;
+    case UNFURL: MessageUnfurl;
+    case FLIP: MessageFlip;
+    case PIN: MessagePin;
+  }
+
+  record SenderPrepareOptions {
+    boolean skipTopicNameState;
+     union { null, MessageID } replyTo;
+  }
+
+  record SenderSendOptions {
+     union { null, ConversationMemberStatus } joinMentionsAs;
+  }
+
+  enum OutboxStateType {
+    SENDING_0,
+    ERROR_1
+  }
+
+
+  // NOTE When adding a type here consider if it should be included in
+  // chat1/extras.go#IsBadgableError
+  enum OutboxErrorType {
+    MISC_0,
+    OFFLINE_1,
+    IDENTIFY_2,
+    TOOLONG_3,
+    DUPLICATE_4,
+    EXPIRED_5,
+    TOOMANYATTEMPTS_6,
+    ALREADY_DELETED_7,
+    UPLOADFAILED_8,
+    RESTRICTEDBOT_9,
+    MINWRITER_10
+  }
+
+  record OutboxStateError {
+    string message;
+    OutboxErrorType typ;
+  }
+
+  variant OutboxState switch (OutboxStateType state) {
+    case SENDING: int; // # of attempts
+    case ERROR: OutboxStateError; // error
+  }
+
+  record OutboxRecord {
+    OutboxState state;
+    OutboxID outboxID;
+    ConversationID convID;
+    gregor1.Time ctime;
+    @lint("ignore")
+    MessagePlaintext Msg;
+    keybase1.TLFIdentifyBehavior identifyBehavior;
+    union { null, SenderPrepareOptions } prepareOpts;
+    union { null, SenderSendOptions } sendOpts;
+    int ordinal; // the position of this outbox record behind the clientPrev in Msg
+    union { null, MakePreviewRes } preview;
+    union { null, MessageUnboxed } replyTo; // only used for display
+  }
+
+  enum HeaderPlaintextVersion {
+    V1_1,
+    V2_2,
+    V3_3,
+    V4_4,
+    V5_5,
+    V6_6,
+    V7_7,
+    V8_8,
+    V9_9,
+    V10_10
+  }
+
+  record HeaderPlaintextMetaInfo {
+    boolean crit; // whether it is critical to support this message
+  }
+
+  record HeaderPlaintextUnsupported {
+    HeaderPlaintextMetaInfo mi;
+  }
+
+  // HeaderPlaintextV1 is version 1 of HeaderPlaintext.
+  // Non-nullable fields may not be changed.
+  // Only nullable fields may be added.
+  // This is because unboxing MessageBoxedV1 reserializes
+  // using this struct and checks for equality of the reserialized form
+  // with the signature.
+  record HeaderPlaintextV1 {
+    ConversationIDTriple conv;
+    string tlfName;
+    boolean tlfPublic;
+    MessageType messageType;
+    array<MessagePreviousPointer> prev;
+    gregor1.UID sender;
+    gregor1.DeviceID senderDevice;
+    union { null, boolean } kbfsCryptKeysUsed;
+
+    // MessageBoxed.V1: Hash of the encrypted body ciphertext.
+    // MessageBoxed.V2: Hash of encrypted body (.v || .n || .e)
+    //                  Where V is a big-endian int32
+    Hash bodyHash;
+
+    union { null, OutboxInfo } outboxInfo;
+    union { null, OutboxID } outboxID;
+
+    // MessageBoxed.V1: Signature over the serialized HeaderPlaintextV1 (with headerSignature set to null).
+    // MessageBoxed.V2: Null (because the header is signencrypted outside)
+    union {null, SignatureInfo} headerSignature;
+
+    // Latest merkle root when sent.
+    // Nil in MBv1 messages. Non-nil in MBv2 messages.
+    union { null, MerkleRoot } merkleRoot;
+
+    // Extra ephemeral key metadata, if the message is exploding. Never
+    // supplied in V1. When supplied with V2, the message is encoded as V3.
+    // This is the only difference between V2 and V3.
+    @mpackkey("em") @jsonkey("em")
+    union { null, MsgEphemeralMetadata } ephemeralMetadata;
+
+    @mpackkey("b") @jsonkey("b")
+    union { null, gregor1.UID } botUID;
+  }
+
+  // HeaderPlaintext is a variant container for all the
+  // versions of HeaderPlaintext.
+  variant HeaderPlaintext switch (HeaderPlaintextVersion version) {
+    case V1 : HeaderPlaintextV1;
+    case V2 : HeaderPlaintextUnsupported;
+    case V3 : HeaderPlaintextUnsupported;
+    case V4 : HeaderPlaintextUnsupported;
+    case V5 : HeaderPlaintextUnsupported;
+    case V6 : HeaderPlaintextUnsupported;
+    case V7 : HeaderPlaintextUnsupported;
+    case V8 : HeaderPlaintextUnsupported;
+    case V9 : HeaderPlaintextUnsupported;
+    case V10: HeaderPlaintextUnsupported;
+  }
+
+  enum BodyPlaintextVersion {
+    V1_1,
+    V2_2,
+    V3_3,
+    V4_4,
+    V5_5,
+    V6_6,
+    V7_7,
+    V8_8,
+    V9_9,
+    V10_10
+  }
+
+  record BodyPlaintextMetaInfo {
+    boolean crit; // whether it's critical to support this message
+  }
+
+  // Every future BodyPlaintextVX needs to be a superset of this structure.
+  record BodyPlaintextUnsupported {
+    BodyPlaintextMetaInfo mi;
+  }
+
+  // BodyPlaintextV1 is version 1 of BodyPlaintext.
+  // The fields here cannot change.  To modify,
+  // create a new record type with a new version.
+  record BodyPlaintextV1 {
+    MessageBody messageBody;
+  }
+
+  record BodyPlaintextV2 {
+    MessageBody messageBody;
+    BodyPlaintextMetaInfo mi;
+  }
+
+  // BodyPlaintext is a variant container for all the
+  // versions of BodyPlaintext.
+  variant BodyPlaintext switch (BodyPlaintextVersion version) {
+    case V1: BodyPlaintextV1;
+    case V2: BodyPlaintextV2;
+    case V3: BodyPlaintextUnsupported;
+    case V4: BodyPlaintextUnsupported;
+    case V5: BodyPlaintextUnsupported;
+    case V6: BodyPlaintextUnsupported;
+    case V7: BodyPlaintextUnsupported;
+    case V8: BodyPlaintextUnsupported;
+    case V9: BodyPlaintextUnsupported;
+    case V10: BodyPlaintextUnsupported;
+  }
+
+  record MessagePlaintext {
+    MessageClientHeader clientHeader;
+    MessageBody messageBody;
+    union { null, OutboxID } supersedesOutboxID;
+    array<HarvestedEmoji> emojis;
+  }
+
+  record MessageUnboxedValid {
+    MessageClientHeaderVerified clientHeader;
+    MessageServerHeader serverHeader;
+    MessageBody messageBody;
+    string senderUsername;
+    string senderDeviceName;
+    keybase1.DeviceTypeV2 senderDeviceType;
+    Hash bodyHash;
+
+    // MessageBoxed.V1: Hash of the encrypted header ciphertext.
+    // MessageBoxed.V2: Hash of MessageBoxed.headerSealed (.v || .n || .b)
+    //                  Where V is a big-endian int32
+    Hash headerHash;
+
+    // TOOD Maybe get rid of this field in favor of verificationKey.
+    //      If so, bump-nuke the caches in storage_blockengine and any other persistent
+    //      storage of MessageUnboxedValid.
+    // MessageBoxed.V1: Header signature. Included for the verification key.
+    // MessageBoxed.V2: Null
+    union {null, SignatureInfo} headerSignature;
+
+    // MessageBoxed.V1: Null
+    // MessageBoxed.V2: The verification key used to unbox.
+    //                  See MessageBoxed.verifyKey
+    union {null, bytes} verificationKey;
+
+    // Whether the message was sent by a device that is now revoked.
+    // We aren't sure whether the device was revoked when the message was sent.
+    // Evaluated when unboxed. Not updated thereafter.
+    union {null, gregor1.Time} senderDeviceRevokedAt;
+
+    array<string> atMentionUsernames;
+    array<gregor1.UID> atMentions;
+    ChannelMention channelMention;
+    array<MaybeMention> maybeMentions;
+    array<ChannelNameMention> channelNameMentions;
+    // reactionText -> [Reaction(username, reactionMsgID)...]
+    ReactionMap reactions;
+    map<MessageID, UnfurlResult> unfurls;
+    array<HarvestedEmoji> emojis;
+
+    // The message this replied to (if any)
+    union { null, MessageUnboxed } replyTo;
+    // Non-empty if this message is keyed for a bot
+    string botUsername;
+  }
+
+  enum MessageUnboxedErrorType {
+    MISC_0,
+    BADVERSION_CRITICAL_1,
+    BADVERSION_2,
+    IDENTIFY_3,
+    EPHEMERAL_4,
+    PAIRWISE_MISSING_5
+  }
+
+  record MessageUnboxedError {
+    MessageUnboxedErrorType errType;
+    string errMsg;
+    // verbose error info for debugging but not
+    // user display
+    string internalErrMsg;
+    VersionKind versionKind;
+    int versionNumber;
+    boolean isCritical;
+    string senderUsername;
+    string senderDeviceName;
+    keybase1.DeviceTypeV2 senderDeviceType;
+    MessageID messageID;
+    MessageType messageType;
+    gregor1.Time ctime;
+    boolean isEphemeral;
+    union { null, string } explodedBy;
+    gregor1.Time etime;
+    // Non-empty if this message is keyed for a bot
+    string botUsername;
+  }
+
+  record MessageUnboxedPlaceholder {
+    MessageID messageID;
+    boolean hidden;
+  }
+
+  enum JourneycardType {
+    WELCOME_0,
+    POPULAR_CHANNELS_1,
+    ADD_PEOPLE_2,
+    CREATE_CHANNELS_3,
+    MSG_ATTENTION_4,
+    UNUSED_5, // Was going to be USER_AWAY_FOR_LONG but never was. Can be re-purposed for something else.
+    CHANNEL_INACTIVE_6,
+    MSG_NO_ANSWER_7
+  }
+
+  record MessageUnboxedJourneycard {
+    MessageID prevID; // ID of the message after which this card appears.
+    int ordinal; // sub-position after prevID. Ought to be >=1. See computeOutboxOrdinal for some context.
+    JourneycardType cardType;
+    MessageID highlightMsgID; // Message ID to highlight for MSG_ATTENTION
+    boolean openTeam; // Whether the team is open. Can be erroneously false due to caching. Only filled for ADD_PEOPLE.
+  }
+
+  // If a new case is needed here, make sure to update at least:
+  // - variant UIMessage in chat_ui.avdl
+  // - func PresentMessageUnboxed
+  variant MessageUnboxed switch (MessageUnboxedState state) {
+    case VALID: MessageUnboxedValid;
+    case ERROR: MessageUnboxedError;
+    case OUTBOX: OutboxRecord;
+    case PLACEHOLDER: MessageUnboxedPlaceholder;
+    case JOURNEYCARD: MessageUnboxedJourneycard;
+  }
+
+  // This causes fetching to return N items, where N = IdeallyGetUnreadPlus +
+  // Unread, if AtLeast <= N <= AtMost, or one of the bounds if there are too
+  // many / too few unread items. i.e. (derived from chris's comment)
+  // collar(AtLeast, (IdeallyGetUnreadPlus + Unread), AtMost)
+  //
+  // By definition, one could use a same non-zero number for both AtLeast and
+  // AtMost to precisely control the number of items returned.
+  record UnreadFirstNumLimit {
+    @lint("ignore")
+    int NumRead;
+
+    @lint("ignore")
+    int AtLeast;
+    @lint("ignore")
+    int AtMost;
+  }
+
+  record ConversationLocalParticipant {
+    string username;
+    boolean inConvName;
+    union { null, string } fullname;
+    union { null, string } contactName;
+  }
+
+  record ConversationPinnedMessage {
+    MessageUnboxed message;
+    string pinnerUsername;
+  }
+
+  record ConversationInfoLocal {
+    ConversationID id;
+    ConversationIDTriple triple;
+
+    string tlfName;
+    string topicName;
+    string headline;
+    array<HarvestedEmoji> headlineEmojis;
+    union { null, MessageUnboxed } snippetMsg;
+    union { null, ConversationPinnedMessage } pinnedMsg;
+    union { null, string } draft;
+    keybase1.TLFVisibility visibility;
+    boolean isDefaultConv;
+    ConversationStatus status;
+    ConversationMembersType membersType;
+    ConversationMemberStatus memberStatus;
+    TeamType teamType;
+    ConversationExistence existence;
+    ConversationVers version;
+    LocalConversationVers localVersion;
+
+    // Lists of usernames, always complete, optionally sorted by activity.
+    array<ConversationLocalParticipant> participants;
+
+    // Only ever set for KBFS conversations
+    union { null, ConversationFinalizeInfo } finalizeInfo;
+    // Only ever set for TEAM and IMPTEAM conversations
+    array<string> resetNames;
+  }
+
+  enum ConversationErrorType {
+    PERMANENT_0,
+    MISSINGINFO_1,
+    SELFREKEYNEEDED_2,
+    OTHERREKEYNEEDED_3,
+    IDENTIFY_4,
+    TRANSIENT_5,
+    NONE_6
+  }
+
+  record ConversationErrorLocal {
+    ConversationErrorType typ;
+    string message;
+    Conversation remoteConv;
+    string unverifiedTLFName;
+    // Only set if typ is for rekeying.
+    union { null, ConversationErrorRekey} rekeyInfo;
+  }
+
+  record ConversationErrorRekey {
+    // All of this stuff is server trust. Don't use it to send messages.
+    string tlfName;
+    boolean tlfPublic;
+    // Users who could rekey this conv.
+    array<string> rekeyers;
+    // Lists of usernames in the conv. Untrusted.
+    array<string> writerNames;
+    array<string> readerNames;
+  }
+
+  record ConversationMinWriterRoleInfoLocal {
+    string changedBy;
+    boolean cannotWrite;
+    keybase1.TeamRole role;
+  }
+
+  record ConversationSettingsLocal {
+    union { null, ConversationMinWriterRoleInfoLocal} minWriterRoleInfo;
+  }
+
+  // ConversationLocal, whenever present, has a valid `identifyFailures` field that
+  // faithfully represent identify result. If identify information is not
+  // available, we should use a different type.
+  record ConversationLocal {
+    union { null, ConversationErrorLocal } error;
+    ConversationInfoLocal info;
+    ConversationReaderInfo readerInfo;
+    union { null, ConversationCreatorInfoLocal } creatorInfo;
+    union { null, ConversationNotificationInfo } notifications;
+    array<ConversationMetadata> supersedes;
+    array<ConversationMetadata> supersededBy;
+
+    array<MessageSummary> maxMessages; // the latest message for each message type
+
+    // Whether this conversation has no content-ful messages.
+    boolean isEmpty;
+
+    // This field, if null or empty, indicates identify succeeded without any
+    // break.
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+
+    Expunge expunge; // The latest history deletion. Defaults to zeroes.
+    union { null, RetentionPolicy } convRetention;
+    union { null, RetentionPolicy } teamRetention;
+    union { null, ConversationSettingsLocal } convSettings;
+
+    // Commands for auto complete and bot comm
+    ConversationCommandGroups commands;
+    ConversationCommandGroups botCommands;
+    map<string, string> botAliases;
+  }
+
+  record NonblockFetchRes {
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  record ThreadView {
+    array<MessageUnboxed> messages;
+    union { null, Pagination } pagination;
+  }
+
+  enum MessageIDControlMode {
+    OLDERMESSAGES_0,
+    NEWERMESSAGES_1,
+    CENTERED_2,
+    UNREADLINE_3
+  }
+
+  record MessageIDControl {
+    union { null, MessageID } pivot;
+    MessageIDControlMode mode;
+    int num;
+  }
+
+  GetThreadLocalRes getThreadLocal(ConversationID conversationID, GetThreadReason reason, union { null, GetThreadQuery} query, union { null, Pagination } pagination, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record GetThreadQuery {
+    boolean markAsRead;
+    array<MessageType> messageTypes;
+    boolean disableResolveSupersedes;
+    boolean enableDeletePlaceholders;
+    boolean disablePostProcessThread;
+
+    union { null, gregor1.Time } before;
+    union { null, gregor1.Time } after;
+    union { null, MessageIDControl } messageIDControl;
+
+  }
+  record GetThreadLocalRes {
+    ThreadView thread;
+
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  enum GetThreadNonblockCbMode {
+    FULL_0,
+    INCREMENTAL_1
+  }
+  enum GetThreadNonblockPgMode {
+    DEFAULT_0,
+    SERVER_1
+  }
+  @timeout_msec(30000) // 30 seconds
+  NonblockFetchRes getThreadNonblock(int sessionID, ConversationID conversationID, GetThreadNonblockCbMode cbMode, GetThreadReason reason, GetThreadNonblockPgMode pgmode, union { null, GetThreadQuery} query, array<string> knownRemotes, union { null, UIPagination } pagination, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+
+  record UnreadlineRes {
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+    union { null, MessageID } unreadlineID;
+  }
+  UnreadlineRes getUnreadline(int sessionID, ConversationID convID,
+    MessageID readMsgID, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  record NameQuery {
+    string name;
+    union { null, TLFID } tlfID; // pass this if we already know the TLFID
+    ConversationMembersType membersType;
+  }
+
+  GetInboxAndUnboxLocalRes getInboxAndUnboxLocal(union { null, GetInboxLocalQuery} query, keybase1.TLFIdentifyBehavior identifyBehavior);
+  GetInboxAndUnboxUILocalRes getInboxAndUnboxUILocal(union { null, GetInboxLocalQuery} query, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record GetInboxLocalQuery {
+    // Local analog of common:GetInboxQuery
+
+    union { null, NameQuery } name;
+    union { null, string } topicName;
+
+    array<ConversationID> convIDs;
+    union { null, TopicType } topicType;
+    union { null, keybase1.TLFVisibility } tlfVisibility;
+    union { null, gregor1.Time } before;
+    union { null, gregor1.Time } after;
+    union { null, boolean } oneChatTypePerTLF;
+
+    // If left empty, default is to show all.
+    array<ConversationStatus> status;
+    // If left empty, default is to return active, preview, and reset status
+    array<ConversationMemberStatus> memberStatus;
+
+    boolean unreadOnly;
+    boolean readOnly;
+    boolean computeActiveList;
+  }
+  record GetInboxAndUnboxLocalRes {
+    array<ConversationLocal> conversations;
+
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+   record GetInboxAndUnboxUILocalRes {
+    array<InboxUIItem> conversations;
+
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  enum InboxLayoutReselectMode {
+    DEFAULT_0,
+    FORCE_1
+  }
+  void requestInboxLayout(InboxLayoutReselectMode reselectMode);
+  void requestInboxUnbox(array<ConversationID> convIDs);
+  void requestInboxSmallIncrease();
+  void requestInboxSmallReset();
+  NonblockFetchRes getInboxNonblockLocal(int sessionID, union { null, int } maxUnbox, boolean skipUnverified, union { null, GetInboxLocalQuery} query, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  PostLocalRes postLocal(int sessionID, ConversationID conversationID, MessagePlaintext msg, union { null, MessageID }  replyTo, keybase1.TLFIdentifyBehavior identifyBehavior, boolean skipInChatPayments);
+  record PostLocalRes {
+    array<RateLimit> rateLimits;
+    MessageID messageID;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  OutboxID generateOutboxID();
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postLocalNonblock(int sessionID, ConversationID conversationID, MessagePlaintext msg, MessageID clientPrev, union { null, OutboxID } outboxID, union { null, MessageID }  replyTo, keybase1.TLFIdentifyBehavior identifyBehavior, boolean skipInChatPayments);
+  record PostLocalNonblockRes {
+    array<RateLimit> rateLimits;
+    OutboxID outboxID;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  PostLocalRes forwardMessage(int sessionID, ConversationID srcConvID, ConversationID dstConvID, MessageID msgID, keybase1.TLFIdentifyBehavior identifyBehavior, string title);
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes forwardMessageNonblock(int sessionID, ConversationID srcConvID, ConversationID dstConvID, MessageID msgID, keybase1.TLFIdentifyBehavior identifyBehavior, string title);
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postTextNonblock(int sessionID, ConversationID conversationID, string tlfName, boolean tlfPublic, string body, MessageID clientPrev, union { null, MessageID } replyTo, union { null, OutboxID } outboxID, keybase1.TLFIdentifyBehavior identifyBehavior, union {null, gregor1.DurationSec} ephemeralLifetime);
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postDeleteNonblock(ConversationID conversationID, string tlfName, boolean tlfPublic, MessageID supersedes,MessageID clientPrev, union { null, OutboxID } outboxID,  keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  record EditTarget {
+    union { null, MessageID } messageID;
+    union { null, OutboxID } outboxID;
+  }
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postEditNonblock(ConversationID conversationID, string tlfName, boolean tlfPublic, EditTarget target, string body, union { null, OutboxID } outboxID, MessageID clientPrev, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postReactionNonblock(ConversationID conversationID, string tlfName, boolean tlfPublic, MessageID supersedes, string body, union { null, OutboxID } outboxID, MessageID clientPrev, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postHeadlineNonblock(ConversationID conversationID, string tlfName, boolean tlfPublic,  string headline, union { null, OutboxID } outboxID, MessageID clientPrev, keybase1.TLFIdentifyBehavior identifyBehavior);
+  PostLocalRes postHeadline(ConversationID conversationID, string tlfName, boolean tlfPublic, string headline, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postMetadataNonblock(ConversationID conversationID, string tlfName, boolean tlfPublic,  string channelName, union { null, OutboxID } outboxID, MessageID clientPrev, keybase1.TLFIdentifyBehavior identifyBehavior);
+  PostLocalRes postMetadata(ConversationID conversationID, string tlfName, boolean tlfPublic, string channelName, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  // Delete from the beginning upto a certain message (exclusive)
+  PostLocalRes postDeleteHistoryUpto(ConversationID conversationID, string tlfName, boolean tlfPublic,
+                   keybase1.TLFIdentifyBehavior identifyBehavior, MessageID upto);
+  // Delete from the beginning through a certain message (inclusive)
+  PostLocalRes postDeleteHistoryThrough(ConversationID conversationID, string tlfName, boolean tlfPublic,
+                    keybase1.TLFIdentifyBehavior identifyBehavior, MessageID through);
+  // Delete all messages older than `age`
+  PostLocalRes postDeleteHistoryByAge(ConversationID conversationID, string tlfName, boolean tlfPublic,
+                    keybase1.TLFIdentifyBehavior identifyBehavior, gregor1.DurationSec age);
+
+  @lint("ignore")
+  SetConversationStatusLocalRes SetConversationStatusLocal(ConversationID conversationID, ConversationStatus status, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record SetConversationStatusLocalRes {
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  // newConversationsLocal tries to make many conversations at once. If the conversation triple already exists,
+  // it is not considered an error. Any errors are returned in the results.
+  NewConversationsLocalRes newConversationsLocal(array<NewConversationLocalArgument> newConversationLocalArguments, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record NewConversationsLocalRes {
+    array<NewConversationsLocalResult> results;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+  record NewConversationsLocalResult {
+    union { null, NewConversationLocalRes } result;
+    union { null, string } err;
+  }
+  record NewConversationLocalArgument {
+    string tlfName;
+    TopicType topicType;
+    keybase1.TLFVisibility tlfVisibility;
+    union { null, string } topicName;
+    ConversationMembersType membersType;
+  }
+
+  NewConversationLocalRes newConversationLocal(string tlfName, TopicType topicType, keybase1.TLFVisibility tlfVisibility, union { null, string } topicName, ConversationMembersType membersType, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record NewConversationLocalRes {
+    ConversationLocal conv;
+    InboxUIItem uiConv;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  // if since is given, limit is ignored
+  GetInboxSummaryForCLILocalRes getInboxSummaryForCLILocal(GetInboxSummaryForCLILocalQuery query);
+  record GetInboxSummaryForCLILocalQuery {
+    TopicType topicType;
+    string after;
+    string before;
+    keybase1.TLFVisibility visibility;
+
+    // If left empty, default is to show all.
+    array<ConversationStatus> status;
+    array<ConversationID> convIDs;
+
+    boolean unreadFirst;
+    UnreadFirstNumLimit unreadFirstLimit;
+    int activitySortedLimit;
+  }
+  record GetInboxSummaryForCLILocalRes {
+    array<ConversationLocal> conversations;
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+
+
+  GetConversationForCLILocalRes getConversationForCLILocal(GetConversationForCLILocalQuery query);
+  record GetConversationForCLILocalQuery {
+    boolean markAsRead;
+    @lint("ignore")
+    array<MessageType> MessageTypes;
+
+    @lint("ignore")
+    union { null, string } Since;
+
+    UnreadFirstNumLimit limit;
+
+    @lint("ignore")
+    ConversationLocal conv;
+  }
+  record GetConversationForCLILocalRes {
+    ConversationLocal conversation;
+    array<MessageUnboxed> messages;
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+
+  // Get messages by ID.
+  @lint("ignore")
+  GetMessagesLocalRes GetMessagesLocal(ConversationID conversationID, array<MessageID> messageIDs, boolean disableResolveSupersedes, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record GetMessagesLocalRes {
+    array<MessageUnboxed> messages;
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  record PostFileAttachmentArg {
+    ConversationID conversationID;
+    string tlfName;
+    keybase1.TLFVisibility visibility;
+    string filename;
+    string title;
+    bytes metadata;
+    keybase1.TLFIdentifyBehavior identifyBehavior;
+
+    union {null, MakePreviewRes } callerPreview;
+    union {null, OutboxID } outboxID;
+    union {null, gregor1.DurationSec} ephemeralLifetime;
+  }
+
+  // Post an attachment from file source to conversationID.
+  PostLocalRes postFileAttachmentLocal(int sessionID, PostFileAttachmentArg arg);
+
+  @timeout_msec(30000) // 30 seconds
+  PostLocalNonblockRes postFileAttachmentLocalNonblock(int sessionID, PostFileAttachmentArg arg, MessageID clientPrev);
+
+  record GetNextAttachmentMessageLocalRes  {
+    union { null, UIMessage } message;
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+  GetNextAttachmentMessageLocalRes getNextAttachmentMessageLocal(ConversationID convID, MessageID messageID, boolean backInTime, array<AssetMetadataType> assetTypes, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  record DownloadAttachmentLocalRes {
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  // Download an attachment from a message into sink stream.
+  @lint("ignore")
+  DownloadAttachmentLocalRes DownloadAttachmentLocal(int sessionID, ConversationID conversationID, MessageID messageID, keybase1.Stream sink, boolean preview, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  // Download an attachment from a message into a local file.
+  // Filename must be writable by the service.
+  record DownloadFileAttachmentLocalRes {
+    string filePath;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+  @lint("ignore")
+  DownloadFileAttachmentLocalRes DownloadFileAttachmentLocal(int sessionID, ConversationID conversationID, MessageID messageID, boolean downloadToCache, boolean preview, keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  @lint("ignore")
+  void ConfigureFileAttachmentDownloadLocal(string cacheDirOverride, string downloadDirOverride);
+
+  enum PreviewLocationTyp {
+    URL_0,
+    FILE_1,
+    BYTES_2
+  }
+
+  variant PreviewLocation switch (PreviewLocationTyp ltyp) {
+    case URL: string;
+    case FILE: string;
+    case BYTES: bytes;
+  }
+
+  record MakePreviewRes {
+    string mimeType;        // this will always be populated
+    union {null, string} previewMimeType ; // this will be populated if we made a preview
+    union {null, PreviewLocation} location;    // will exist if service is able to make a preview
+    union {null, AssetMetadata} metadata; // will exist if service is able to make a preview
+    union {null, AssetMetadata} baseMetadata; // will exist if service is able to get base metadata
+  }
+  MakePreviewRes makePreview(int sessionID, string filename, OutboxID outboxID);
+  MakePreviewRes makeAudioPreview(array<double> amps, int duration);
+  string getUploadTempFile(OutboxID outboxID, string filename);
+  string makeUploadTempFile(OutboxID outboxID, string filename, bytes data);
+  void cancelUploadTempFile(OutboxID outboxID);
+
+  @lint("ignore")
+  void CancelPost(OutboxID outboxID);
+  @lint("ignore")
+  void RetryPost(OutboxID outboxID, union { null, keybase1.TLFIdentifyBehavior } identifyBehavior);
+
+  record MarkAsReadLocalRes {
+     boolean offline;
+     array<RateLimit> rateLimits;
+  }
+  MarkAsReadLocalRes markAsReadLocal(int sessionID, ConversationID conversationID, union { null, MessageID } msgID, boolean forceUnread);
+
+  record MarkTLFAsReadLocalRes {
+     boolean offline;
+     array<RateLimit> rateLimits;
+  }
+  MarkTLFAsReadLocalRes markTLFAsReadLocal(int sessionID, TLFID tlfID);
+
+  record FindConversationsLocalRes {
+    array<ConversationLocal> conversations; // for the cli / json api
+    array<InboxUIItem> uiConversations; // for the gui
+
+    boolean offline;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  FindConversationsLocalRes findConversationsLocal(string tlfName, ConversationMembersType membersType, keybase1.TLFVisibility visibility, TopicType topicType, string topicName, union { null, boolean } oneChatPerTLF, keybase1.TLFIdentifyBehavior identifyBehavior);
+  InboxUIItem findGeneralConvFromTeamID(keybase1.TeamID teamID);
+
+  // Typing API
+  void updateTyping(ConversationID conversationID, boolean typing); // throttled
+  void updateUnsentText(ConversationID conversationID, string tlfName, string text); // debounced
+
+  // Channel management
+  record JoinLeaveConversationLocalRes {
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  JoinLeaveConversationLocalRes joinConversationLocal(string tlfName, TopicType topicType, keybase1.TLFVisibility visibility, string topicName);
+  JoinLeaveConversationLocalRes joinConversationByIDLocal(ConversationID convID);
+  JoinLeaveConversationLocalRes leaveConversationLocal(ConversationID convID);
+  record PreviewConversationLocalRes {
+    InboxUIItem conv;
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  PreviewConversationLocalRes previewConversationByIDLocal(ConversationID convID);
+  record DeleteConversationLocalRes {
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  DeleteConversationLocalRes deleteConversationLocal(int sessionID, ConversationID convID, string channelName, boolean confirmed);
+  record RemoveFromConversationLocalRes {
+    array<RateLimit> rateLimits;
+  }
+  RemoveFromConversationLocalRes removeFromConversationLocal(ConversationID convID, array<string> usernames);
+
+  record GetTLFConversationsLocalRes {
+    array<InboxUIItem> convs;
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  GetTLFConversationsLocalRes getTLFConversationsLocal(string tlfName, TopicType topicType, ConversationMembersType membersType);
+
+  record GetChannelMembershipsLocalRes {
+    array<ChannelNameMention> channels;
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  GetChannelMembershipsLocalRes getChannelMembershipsLocal(keybase1.TeamID teamID, gregor1.UID uid);
+
+
+  record GetMutualTeamsLocalRes {
+    array<keybase1.TeamID> teamIDs;
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  GetMutualTeamsLocalRes getMutualTeamsLocal(array<string> usernames);
+
+  // Chat notification configuration endpoint. Does not need to be complete, just a delta on the
+  // currently configured settings.
+  record SetAppNotificationSettingsLocalRes {
+    boolean offline;
+    array<RateLimit> rateLimits;
+  }
+  record AppNotificationSettingLocal {
+    keybase1.DeviceType deviceType;
+    NotificationKind kind;
+    boolean enabled;
+  }
+  SetAppNotificationSettingsLocalRes setAppNotificationSettingsLocal(ConversationID convID, boolean channelWide, array<AppNotificationSettingLocal> settings);
+  void setGlobalAppNotificationSettingsLocal(map<string, bool> settings);
+  GlobalAppNotificationSettings getGlobalAppNotificationSettingsLocal();
+
+  // Unpack message from a push notification
+  string unboxMobilePushNotification(string payload, string convID, ConversationMembersType membersType, array<string> pushIDs, boolean shouldAck);
+
+  // Convenience interface for adding someone back to a reset team convo
+  void addTeamMemberAfterReset(string username, ConversationID convID);
+  record ResetConvMember {
+    string username;
+    gregor1.UID uid;
+    ConversationID conv;
+  }
+  record GetAllResetConvMembersRes {
+    array<ResetConvMember> members;
+    array<RateLimit> rateLimits;
+  }
+  GetAllResetConvMembersRes getAllResetConvMembers();
+
+  void setConvRetentionLocal(ConversationID convID, RetentionPolicy policy);
+  void setTeamRetentionLocal(keybase1.TeamID teamID, RetentionPolicy policy);
+  union { null, RetentionPolicy } getTeamRetentionLocal(keybase1.TeamID teamID);
+
+  void setConvMinWriterRoleLocal(ConversationID convID, keybase1.TeamRole role);
+  void upgradeKBFSConversationToImpteam(ConversationID convID);
+
+  record SearchRegexpRes {
+    boolean offline;
+    array<ChatSearchHit> hits;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  SearchRegexpRes searchRegexp(int sessionID, ConversationID convID, string query,
+    SearchOpts opts, keybase1.TLFIdentifyBehavior identifyBehavior);
+  void cancelActiveInboxSearch();
+
+  record SearchInboxRes {
+    boolean offline;
+    union { null, ChatSearchInboxResults } res;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  SearchInboxRes searchInbox(int sessionID, string query,
+    SearchOpts opts, boolean namesOnly, keybase1.TLFIdentifyBehavior identifyBehavior);
+  record SimpleSearchInboxConvNamesHit {
+    string name;
+    ConversationID convID;
+    boolean isTeam;
+    array<string> parts;
+    string tlfName;
+  }
+  array<SimpleSearchInboxConvNamesHit> simpleSearchInboxConvNames(string query);
+
+  void cancelActiveSearch();
+
+  record ProfileSearchConvStats {
+    string err;
+    string convName;
+    // min/max messages we care about for the index.
+    MessageID minConvID;
+    MessageID maxConvID;
+    // number of missing ids from the index
+    int numMissing;
+    // number of messages in the conversation that were indexed
+    int numMessages;
+    // number of bytes in the index on disk
+    int indexSizeDisk;
+    // number of bytes in the index in memory
+    int64 indexSizeMem;
+    // total time to index the conv
+    gregor1.DurationMsec durationMsec;
+    int percentIndexed;
+  }
+
+  map<ConvIDStr, ProfileSearchConvStats> profileChatSearch(keybase1.TLFIdentifyBehavior identifyBehavior);
+
+  // Static data that changes only as often as the code.
+  // TODO: consolidate this RPC with the wallet `getStaticConfig` in the future
+  StaticConfig getStaticConfig();
+  record BuiltinCommandGroup {
+    ConversationBuiltinCommandTyp typ;
+    array<ConversationCommand> commands;
+  }
+  record StaticConfig {
+    array<MessageType> deletableByDeleteHistory;
+    array<BuiltinCommandGroup> builtinCommands;
+  }
+
+  // Respond to an unfurl prompt
+  enum UnfurlPromptAction {
+    ALWAYS_0,
+    NEVER_1,
+    ACCEPT_2,
+    NOTNOW_3,
+    ONETIME_4
+  }
+  variant UnfurlPromptResult switch (UnfurlPromptAction actionType) {
+    case ALWAYS: void;
+    case NEVER: void;
+    case NOTNOW: void;
+    case ACCEPT: string;
+    case ONETIME: string;
+  }
+  void resolveUnfurlPrompt(ConversationID convID, MessageID msgID, UnfurlPromptResult result, keybase1.TLFIdentifyBehavior identifyBehavior);
+  UnfurlSettingsDisplay getUnfurlSettings();
+  void saveUnfurlSettings(UnfurlMode mode, array<string> whitelist);
+
+  void toggleMessageCollapse(ConversationID convID, MessageID msgID, boolean collapse);
+
+  void bulkAddToConv(ConversationID convID, array<string> usernames);
+  void bulkAddToManyConvs(array<ConversationID> conversations, array<string> usernames);
+
+  keybase1.UserReacjis putReacjiSkinTone(keybase1.ReacjiSkinTone skinTone);
+
+  void resolveMaybeMention(MaybeMention mention);
+
+  // Gallery support
+  enum GalleryItemTyp {
+    MEDIA_0,
+    LINK_1,
+    DOC_2
+  }
+  record LoadGalleryRes {
+    array<UIMessage> messages;
+    boolean last;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+  LoadGalleryRes loadGallery(int sessionID, ConversationID convID, GalleryItemTyp typ, int num, union { null, MessageID } fromMsgID);
+
+  // Flips in the API
+  record LoadFlipRes {
+    UICoinFlipStatus status;
+    array<RateLimit> rateLimits;
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+  LoadFlipRes loadFlip(ConversationID hostConvID, MessageID hostMsgID, ConversationID flipConvID, FlipGameID gameID);
+
+  // Location updates
+  void locationUpdate(Coordinate coord);
+
+  // Bot commands
+  record UserBotExtendedDescription {
+    string title;
+    @jsonkey("desktop_body")
+    string desktopBody;
+    @jsonkey("mobile_body")
+    string mobileBody;
+  }
+  record UserBotCommandOutput {
+    string name;
+    string description;
+    string usage;
+    @jsonkey("extended_description")
+    union { null, UserBotExtendedDescription } extendedDescription;
+    string username;
+  }
+  record UserBotCommandInput {
+    string name;
+    string description;
+    string usage;
+    @jsonkey("extended_description")
+    union { null, UserBotExtendedDescription } extendedDescription;
+  }
+  record AdvertiseCommandsParam {
+    BotCommandsAdvertisementTyp typ;
+    array<UserBotCommandInput> commands;
+    union { null, string } teamName;
+    union { null, ConversationID } convID;
+  }
+  record AdvertiseBotCommandsLocalRes {
+    array<RateLimit> rateLimits;
+  }
+
+  AdvertiseBotCommandsLocalRes advertiseBotCommandsLocal(union { null, string } alias,
+    array<AdvertiseCommandsParam> advertisements);
+  record ListBotCommandsLocalRes {
+    array<UserBotCommandOutput> commands;
+    array<RateLimit> rateLimits;
+  }
+  ListBotCommandsLocalRes listBotCommandsLocal(ConversationID convID);
+
+  ListBotCommandsLocalRes listPublicBotCommandsLocal(string username);
+
+  record ClearBotCommandsFilter {
+    BotCommandsAdvertisementTyp typ;
+    union { null, string } teamName;
+    union { null, ConversationID } convID;
+  }
+  record ClearBotCommandsLocalRes {
+    array<RateLimit> rateLimits;
+  }
+  ClearBotCommandsLocalRes clearBotCommandsLocal(union { null, ClearBotCommandsFilter } filter);
+
+  // Pinning
+  record PinMessageRes {
+    array<RateLimit> rateLimits;
+  }
+  PinMessageRes pinMessage(ConversationID convID, MessageID msgID);
+  PinMessageRes unpinMessage(ConversationID convID);
+  void ignorePinnedMessage(ConversationID convID);
+
+  // Bot interface
+  void addBotMember(ConversationID convID, string username, union { null, keybase1.TeamBotSettings } botSettings, keybase1.TeamRole role);
+  void editBotMember(ConversationID convID, string username, union { null, keybase1.TeamBotSettings } botSettings, keybase1.TeamRole role);
+  void removeBotMember(ConversationID convID, string username);
+  void setBotMemberSettings(ConversationID convID, string username, keybase1.TeamBotSettings botSettings);
+  keybase1.TeamBotSettings getBotMemberSettings(ConversationID convID, string username);
+  keybase1.TeamRole getTeamRoleInConversation(ConversationID convID, string username);
+  record ConvSearchHit {
+    string name;
+    ConversationID convID;
+    boolean isTeam;
+    array<string> parts;
+  }
+  array<ConvSearchHit> addBotConvSearch(string term);
+  array<ConvSearchHit> forwardMessageConvSearch(string term);
+
+  keybase1.TeamID teamIDFromTLFName(string tlfName, ConversationMembersType membersType, boolean tlfPublic);
+
+  void dismissJourneycard(ConversationID convID, JourneycardType cardType);
+
+  record LocalMtimeUpdate {
+    ConversationID convID;
+    gregor1.Time mtime;
+  }
+
+  enum SnippetDecoration {
+    NONE_0,
+    PENDING_MESSAGE_1,
+    FAILED_PENDING_MESSAGE_2,
+    EXPLODING_MESSAGE_3,
+    EXPLODED_MESSAGE_4,
+    AUDIO_ATTACHMENT_5,
+    VIDEO_ATTACHMENT_6,
+    PHOTO_ATTACHMENT_7,
+    FILE_ATTACHMENT_8,
+    STELLAR_RECEIVED_9,
+    STELLAR_SENT_10,
+    PINNED_MESSAGE_11
+  }
+
+  record WelcomeMessageDisplay{
+    boolean set;
+    // display is text suitable for displaying in Kb.Markdown (e.g., it
+    // has KB-escaped URLs)
+    string display;
+    // raw is the raw user-input plaintext
+    string raw;
+  }
+  record WelcomeMessage {
+    boolean set;
+    // raw is the raw user-input plaintext
+    string raw;
+  }
+  void setWelcomeMessage(keybase1.TeamID teamID, WelcomeMessage message);
+  WelcomeMessageDisplay getWelcomeMessage(keybase1.TeamID teamID);
+
+  record GetDefaultTeamChannelsLocalRes {
+    array<InboxUIItem> convs;
+    union { null, RateLimit } rateLimit;
+  }
+  GetDefaultTeamChannelsLocalRes getDefaultTeamChannelsLocal(keybase1.TeamID teamID);
+
+  record SetDefaultTeamChannelsLocalRes {
+    union { null, RateLimit } rateLimit;
+  }
+  SetDefaultTeamChannelsLocalRes setDefaultTeamChannelsLocal(keybase1.TeamID teamID, array<ConvIDStr> convs);
+
+  LastActiveStatus getLastActiveForTLF(TLFIDStr tlfID);
+  record LastActiveTimeAll {
+    map<TLFIDStr, gregor1.Time> teams;
+    map<ConvIDStr, gregor1.Time> channels;
+  }
+  record LastActiveStatusAll {
+    map<TLFIDStr, LastActiveStatus> teams; // top level active status for teams
+    map<ConvIDStr, LastActiveStatus> channels; // active status for all team channels
+  }
+  LastActiveStatusAll getLastActiveForTeams();
+
+  int getRecentJoinsLocal(ConversationID convID);
+
+  // queue up a refresh of participants, this will result in notifications to the UI with the data
+  // from local and remote sources
+  void refreshParticipants(ConversationID convID);
+  gregor1.Time getLastActiveAtLocal(keybase1.TeamID teamID, string username);
+  map<keybase1.TeamID, gregor1.Time> getLastActiveAtMultiLocal(array<keybase1.TeamID> teamIDs, string username);
+
+  array<ConversationLocalParticipant> getParticipants(ConversationID convID);
+
+  // Emoji
+  record EmojiError {
+    string clidisplay;
+    string uidisplay;
+  }
+  record AddEmojiRes {
+    union { null, RateLimit } rateLimit;
+    union {null, EmojiError} error;
+  }
+  AddEmojiRes addEmoji(ConversationID convID, string alias, string filename, boolean allowOverwrite);
+
+  record AddEmojisRes {
+    union { null, RateLimit } rateLimit;
+    array<string> successFilenames;
+    map<string, EmojiError> failedFilenames; // filename => error message
+  }
+  AddEmojisRes addEmojis(ConversationID convID, array<string> aliases, array<string> filenames, array<boolean> allowOverwrite);
+
+  record AddEmojiAliasRes {
+    union { null, RateLimit } rateLimit;
+    union {null, EmojiError} error;
+  }
+  AddEmojiAliasRes addEmojiAlias(ConversationID convID, string newAlias, string existingAlias);
+
+  record RemoveEmojiRes {
+    union { null, RateLimit } rateLimit;
+  }
+  RemoveEmojiRes removeEmoji(ConversationID convID, string alias);
+
+  record UserEmojiRes {
+    UserEmojis emojis;
+    union { null, RateLimit } rateLimit;
+  }
+
+  record EmojiFetchOpts {
+    boolean getCreationInfo;
+    boolean getAliases;
+    boolean onlyInTeam;
+  }
+  UserEmojiRes userEmojis(EmojiFetchOpts opts, union { null, ConversationID } convID);
+  void toggleEmojiAnimations(boolean enabled);
+
+  record TrackGiphySelectRes {
+  }
+  TrackGiphySelectRes trackGiphySelect(int sessionID, GiphySearchResult result);
+
+  // Starts a new archive job.
+  record ArchiveChatJobRequest {
+    ArchiveJobID jobID;
+    string outputPath; // can be empty
+    union { null, GetInboxLocalQuery} query;
+    boolean compress;
+    keybase1.TLFIdentifyBehavior identifyBehavior;
+  }
+  ArchiveChatRes archiveChat(ArchiveChatJobRequest req);
+  record ArchiveChatRes {
+    string outputPath; // Possibily modified from the input if the input was not set or the output was compressed.
+    array<keybase1.TLFIdentifyFailure> identifyFailures;
+  }
+
+  // List all (un-deleted) archive jobs
+  ArchiveChatListRes archiveChatList(keybase1.TLFIdentifyBehavior identifyBehavior);
+  // Internal metadata, keyed by convid
+  record ArchiveChatConvCheckpoint {
+    Pagination pagination;
+    int64 offset;
+  }
+  record ArchiveChatJob {
+    ArchiveChatJobRequest request;
+    // All conversations that matched the request.
+    array<InboxUIItem> matchingConvs;
+    gregor1.Time startedAt;
+    ArchiveChatJobStatus status;
+    string err; // Set iff status == ERROR
+    // Overall progress
+    int64 messagesTotal;
+    int64 messagesComplete;
+    // convID -> checkpoint
+    map<string, ArchiveChatConvCheckpoint> checkpoints;
+  }
+  enum ArchiveChatJobStatus {
+    RUNNING_0,
+    PAUSED_1, // paused explicitly by the user
+    BACKGROUND_PAUSED_2, // paused because of background/shutting down the service
+    ERROR_3,
+    COMPLETE_4
+  }
+  record ArchiveChatListRes {
+    array<ArchiveChatJob> jobs;
+  }
+  // DB Storage
+  record ArchiveChatHistory {
+    map<ArchiveJobID, ArchiveChatJob> jobHistory;
+  }
+
+  void archiveChatDelete(ArchiveJobID jobID, boolean deleteOutputPath, keybase1.TLFIdentifyBehavior identifyBehavior);
+  void archiveChatPause(ArchiveJobID jobID, keybase1.TLFIdentifyBehavior identifyBehavior);
+  void archiveChatResume(ArchiveJobID jobID, keybase1.TLFIdentifyBehavior identifyBehavior);
+}
