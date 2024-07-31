@@ -3,7 +3,7 @@ module github.com/keybase/client/go
 go 1.19
 
 require (
-	bazil.org/fuse v0.0.0-20200424023519-3c101025617f
+	bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5
 	camlistore.org v0.0.0-20161205184337-c55c8602d3ce
 	github.com/PuerkitoBio/goquery v1.5.1
 	github.com/akavel/rsrc v0.2.1-0.20151103204339-ba14da1f8271
