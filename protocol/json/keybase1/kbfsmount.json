@@ -1,0 +1,54 @@
+{
+  "protocol": "kbfsMount",
+  "imports": [],
+  "types": [],
+  "messages": {
+    "GetCurrentMountDir": {
+      "request": [],
+      "response": "string",
+      "lint": "ignore"
+    },
+    "WaitForMounts": {
+      "request": [],
+      "response": "boolean",
+      "lint": "ignore"
+    },
+    "GetPreferredMountDirs": {
+      "request": [],
+      "response": {
+        "type": "array",
+        "items": "string"
+      },
+      "lint": "ignore"
+    },
+    "GetAllAvailableMountDirs": {
+      "request": [],
+      "response": {
+        "type": "array",
+        "items": "string"
+      },
+      "lint": "ignore"
+    },
+    "SetCurrentMountDir": {
+      "request": [
+        {
+          "name": "dir",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "lint": "ignore"
+    },
+    "GetKBFSPathInfo": {
+      "request": [
+        {
+          "name": "standardPath",
+          "type": "string"
+        }
+      ],
+      "response": "KBFSPathInfo",
+      "lint": "ignore"
+    }
+  },
+  "namespace": "keybase.1"
+}
