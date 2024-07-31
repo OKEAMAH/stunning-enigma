@@ -7,7 +7,7 @@ require (
 	camlistore.org v0.0.0-20161205184337-c55c8602d3ce
 	github.com/PuerkitoBio/goquery v1.5.1
 	github.com/akavel/rsrc v0.2.1-0.20151103204339-ba14da1f8271
-	github.com/araddon/dateparse v0.0.0-20180729174819-cfd92a431d0e
+	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/blang/semver v3.5.1+incompatible
 	// NOTE: if bleve is updated, consider removing the `replace` directive
 	// for bbolt at the bottom of this go.mod
@@ -226,7 +226,7 @@ require (
 	github.com/maratori/testpackage v1.1.1 // indirect
 	github.com/matoous/godox v0.0.0-20230222163458-006bad1f9d26 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-runewidth v0.0.9 // indirect
+	github.com/mattn/go-runewidth v0.0.10 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mbilski/exhaustivestruct v1.2.0 // indirect
 	github.com/mgechev/revive v1.3.4 // indirect
