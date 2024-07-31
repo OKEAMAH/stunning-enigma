@@ -1,0 +1,1296 @@
+// Copyright 2015 Keybase, Inc. All rights reserved. Use of
+// this source code is governed by the included BSD license.
+
+package libkb
+
+import (
+	"bufio"
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base32"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"math/big"
+	"net/url"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/keybase/client/go/kbcrypto"
+	"github.com/keybase/client/go/kbun"
+	"github.com/keybase/client/go/logger"
+	"github.com/keybase/client/go/profiling"
+	keybase1 "github.com/keybase/client/go/protocol/keybase1"
+	"github.com/keybase/clockwork"
+	"github.com/keybase/go-codec/codec"
+	jsonw "github.com/keybase/go-jsonw"
+	"golang.org/x/net/context"
+)
+
+// PrereleaseBuild can be set at compile time for prerelease builds.
+// CAUTION: Don't change the name of this variable without grepping for
+// occurrences in shell scripts!
+var PrereleaseBuild string
+
+// VersionString returns semantic version string
+func VersionString() string {
+	if PrereleaseBuild != "" {
+		return fmt.Sprintf("%s-%s", Version, PrereleaseBuild)
+	}
+	return Version
+}
+
+func ErrToOkPtr(err *error) string {
+	if err == nil {
+		return "ok"
+	}
+	return ErrToOk(*err)
+}
+
+func ErrToOk(err error) string {
+	if err == nil {
+		return "ok"
+	}
+	return fmt.Sprintf("ERROR: %v", err)
+}
+
+// exists returns whether the given file or directory exists or not
+func FileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func MakeParentDirs(log SkinnyLogger, filename string) error {
+	dir := filepath.Dir(filename)
+	exists, err := FileExists(dir)
+	if err != nil {
+		log.Errorf("Can't see if parent dir %s exists", dir)
+		return err
+	}
+
+	if !exists {
+		err = os.MkdirAll(dir, PermDir)
+		if err != nil {
+			log.Errorf("Can't make parent dir %s", dir)
+			return err
+		}
+		log.Debug("Created parent directory %s", dir)
+	}
+	return nil
+}
+
+func FastByteArrayEq(a, b []byte) bool {
+	return kbcrypto.FastByteArrayEq(a, b)
+}
+
+func SecureByteArrayEq(a, b []byte) bool {
+	return kbcrypto.SecureByteArrayEq(a, b)
+}
+
+func FormatTime(tm time.Time) string {
+	layout := "2006-01-02 15:04:05 MST"
+	return tm.Format(layout)
+}
+
+func Cicmp(s1, s2 string) bool {
+	return strings.EqualFold(s1, s2)
+}
+
+func TrimCicmp(s1, s2 string) bool {
+	return Cicmp(strings.TrimSpace(s1), strings.TrimSpace(s2))
+}
+
+func NameTrim(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	strip := func(r rune) rune {
+		switch {
+		case r == '_', r == '-', r == '+', r == '\'':
+			return -1
+		case unicode.IsSpace(r):
+			return -1
+		}
+		return r
+
+	}
+	return strings.Map(strip, s)
+}
+
+// NameCmp removes whitespace and underscores, compares tolower.
+func NameCmp(n1, n2 string) bool {
+	return NameTrim(n1) == NameTrim(n2)
+}
+
+func IsLowercase(s string) bool {
+	return strings.ToLower(s) == s
+}
+
+func PickFirstError(errors ...error) error {
+	for _, e := range errors {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+type FirstErrorPicker struct {
+	e     error
+	count int
+}
+
+func (p *FirstErrorPicker) Push(e error) {
+	if e != nil {
+		p.count++
+		if p.e == nil {
+			p.e = e
+		}
+	}
+}
+
+func (p *FirstErrorPicker) Count() int {
+	return p.count
+}
+
+func (p *FirstErrorPicker) Error() error {
+	return p.e
+}
+
+func GiveMeAnS(i int) string {
+	if i != 1 {
+		return "s"
+	}
+	return ""
+}
+
+func KeybaseEmailAddress(s string) string {
+	return s + "@keybase.io"
+}
+
+func DrainPipe(rc io.Reader, sink func(string)) error {
+	scanner := bufio.NewScanner(rc)
+	for scanner.Scan() {
+		sink(scanner.Text())
+	}
+	return scanner.Err()
+}
+
+type SafeWriter interface {
+	GetFilename() string
+	WriteTo(io.Writer) (int64, error)
+}
+
+type SafeWriteLogger interface {
+	Debug(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
+}
+
+// SafeWriteToFile to safely write to a file. Use mode=0 for default permissions.
+func safeWriteToFileOnce(g SafeWriteLogger, t SafeWriter, mode os.FileMode) (err error) {
+	fn := t.GetFilename()
+	g.Debug("+ SafeWriteToFile(%q)", fn)
+	defer func() {
+		g.Debug("- SafeWriteToFile(%q) -> %s", fn, ErrToOk(err))
+	}()
+
+	tmpfn, tmp, err := OpenTempFile(fn, "", mode)
+	if err != nil {
+		return err
+	}
+	g.Debug("| Temporary file generated: %s", tmpfn)
+	defer tmp.Close()
+	defer func() { _ = ShredFile(tmpfn) }()
+
+	g.Debug("| WriteTo %s", tmpfn)
+	n, err := t.WriteTo(tmp)
+	if err != nil {
+		g.Errorf("| Error writing temporary file %s: %s", tmpfn, err)
+		return err
+	}
+	if n != 0 {
+		// unfortunately, some implementations always return 0 for the number
+		// of bytes written, so not much info there, but will log it when
+		// it isn't 0.
+		g.Debug("| bytes written to temporary file %s: %d", tmpfn, n)
+	}
+
+	if err := tmp.Sync(); err != nil {
+		g.Errorf("| Error syncing temporary file %s: %s", tmpfn, err)
+		return err
+	}
+
+	if err := tmp.Close(); err != nil {
+		g.Errorf("| Error closing temporary file %s: %s", tmpfn, err)
+		return err
+	}
+
+	g.Debug("| Renaming temporary file %s -> permanent file %s", tmpfn, fn)
+	if err := os.Rename(tmpfn, fn); err != nil {
+		g.Errorf("| Error renaming temporary file %s -> permanent file %s: %s", tmpfn, fn, err)
+		return err
+	}
+
+	if runtime.GOOS == "android" {
+		g.Debug("| Android extra checks in safeWriteToFile")
+		info, err := os.Stat(fn)
+		if err != nil {
+			g.Errorf("| Error os.Stat(%s): %s", fn, err)
+			return err
+		}
+		g.Debug("| File info: name = %s", info.Name())
+		g.Debug("| File info: size = %d", info.Size())
+		g.Debug("| File info: mode = %s", info.Mode())
+		g.Debug("| File info: mod time = %s", info.ModTime())
+
+		g.Debug("| Android extra checks done")
+	}
+
+	g.Debug("| Done writing to file %s", fn)
+
+	return nil
+}
+
+// Pluralize returns pluralized string with value.
+// For example,
+//
+//	Pluralize(1, "zebra", "zebras", true) => "1 zebra"
+//	Pluralize(2, "zebra", "zebras", true) => "2 zebras"
+//	Pluralize(2, "zebra", "zebras", false) => "zebras"
+func Pluralize(n int, singular string, plural string, nshow bool) string {
+	if n == 1 {
+		if nshow {
+			return fmt.Sprintf("%d %s", n, singular)
+		}
+		return singular
+	}
+	if nshow {
+		return fmt.Sprintf("%d %s", n, plural)
+	}
+	return plural
+}
+
+// Contains returns true if string is contained in string slice
+func Contains(s string, list []string) bool {
+	return IsIn(s, list, false)
+}
+
+// IsIn checks for needle in haystack, ci means case-insensitive.
+func IsIn(needle string, haystack []string, ci bool) bool {
+	for _, h := range haystack {
+		if (ci && Cicmp(h, needle)) || (!ci && h == needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// Found regex here: http://stackoverflow.com/questions/106179/regular-expression-to-match-dns-hostname-or-ip-address
+var hostnameRE = regexp.MustCompile("^(?i:[a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])$")
+
+func IsValidHostname(s string) bool {
+	parts := strings.Split(s, ".")
+	// Found regex here: http://stackoverflow.com/questions/106179/regular-expression-to-match-dns-hostname-or-ip-address
+	if len(parts) < 2 {
+		return false
+	}
+	for _, p := range parts {
+		if !hostnameRE.MatchString(p) {
+			return false
+		}
+	}
+	// TLDs must be >=2 chars
+	return len(parts[len(parts)-1]) >= 2
+}
+
+var phoneAssertionRE = regexp.MustCompile(`^[1-9]\d{1,14}$`)
+
+// IsPossiblePhoneNumberAssertion checks if s is string of digits without a `+`
+// prefix for SBS assertions
+func IsPossiblePhoneNumberAssertion(s string) bool {
+	return phoneAssertionRE.MatchString(s)
+}
+
+var phoneRE = regexp.MustCompile(`^\+[1-9]\d{1,14}$`)
+
+// IsPossiblePhoneNumber checks if s is string of digits in phone number format
+func IsPossiblePhoneNumber(phone keybase1.PhoneNumber) error {
+	if !phoneRE.MatchString(string(phone)) {
+		return fmt.Errorf("Invalid phone number, expected +11234567890 format")
+	}
+	return nil
+}
+
+type Random interface {
+	// RndRange returns a uniformly random integer between low and high inclusive
+	RndRange(low, high int64) (res int64, err error)
+}
+
+// SecureRandom internally uses the cryptographically secure crypto/rand as a
+// source of randomness.
+type SecureRandom struct{}
+
+func (r *SecureRandom) RndRange(low, high int64) (res int64, err error) {
+	if low > high {
+		return 0, fmt.Errorf("SecureRandom error: [%v,%v] is not a valid range", low, high)
+	}
+	rangeBig := big.NewInt(high - low + 1)
+	big, err := rand.Int(rand.Reader, rangeBig)
+	if err != nil {
+		return 0, err
+	}
+	return low + big.Int64(), nil
+}
+
+var _ Random = (*SecureRandom)(nil)
+
+func RandBytes(length int) ([]byte, error) {
+	var n int
+	var err error
+	buf := make([]byte, length)
+	if n, err = rand.Read(buf); err != nil {
+		return nil, err
+	}
+	// rand.Read uses io.ReadFull internally, so this check should never fail.
+	if n != length {
+		return nil, fmt.Errorf("RandBytes got too few bytes, %d < %d", n, length)
+	}
+	return buf, nil
+}
+
+func RandBytesWithSuffix(length int, suffix byte) ([]byte, error) {
+	buf, err := RandBytes(length)
+	if err != nil {
+		return nil, err
+	}
+	buf[len(buf)-1] = suffix
+	return buf, nil
+}
+
+func XORBytes(dst, a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		dst[i] = a[i] ^ b[i]
+	}
+	return n
+}
+
+// The standard time.Unix() converter interprets 0 as the Unix epoch (1970).
+// But in PGP, an expiry time of zero indicates that a key never expires, and
+// it would be nice to be able to check for that case with Time.IsZero(). This
+// conversion special-cases 0 to be time.Time's zero-value (1 AD), so that we
+// get that nice property.
+func UnixToTimeMappingZero(unixTime int64) time.Time {
+	if unixTime == 0 {
+		var zeroTime time.Time
+		return zeroTime
+	}
+	return time.Unix(unixTime, 0)
+}
+
+func Unquote(data []byte) string { return keybase1.Unquote(data) }
+
+func HexDecodeQuoted(data []byte) ([]byte, error) {
+	return hex.DecodeString(Unquote(data))
+}
+
+func IsArmored(buf []byte) bool {
+	return bytes.HasPrefix(bytes.TrimSpace(buf), []byte("-----"))
+}
+
+func RandInt64() (int64, error) {
+	max := big.NewInt(math.MaxInt64)
+	x, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return 0, err
+	}
+	return x.Int64(), nil
+}
+
+func RandInt() (int, error) {
+	x, err := RandInt64()
+	if err != nil {
+		return 0, err
+	}
+	return int(x), nil
+}
+
+func RandIntn(n int) int {
+	x, err := RandInt()
+	if err != nil {
+		panic(fmt.Sprintf("RandInt error: %s", err))
+	}
+	return x % n
+}
+
+// MakeURI makes a URI string out of the given protocol and
+// host strings, adding necessary punctuation in between.
+func MakeURI(prot string, host string) string {
+	if prot == "" {
+		return host
+	}
+	if prot[len(prot)-1] != ':' {
+		prot += ":"
+	}
+	return prot + "//" + host
+}
+
+// RemoveNilErrors returns error slice with ni errors removed.
+func RemoveNilErrors(errs []error) []error {
+	var r []error
+	for _, err := range errs {
+		if err != nil {
+			r = append(r, err)
+		}
+	}
+	return r
+}
+
+// CombineErrors returns a single error for multiple errors, or nil if none.
+func CombineErrors(errs ...error) error {
+	errs = RemoveNilErrors(errs)
+	if len(errs) == 0 {
+		return nil
+	} else if len(errs) == 1 {
+		return errs[0]
+	}
+
+	msgs := []string{}
+	for _, err := range errs {
+		msgs = append(msgs, err.Error())
+	}
+	return fmt.Errorf("There were multiple errors: %s", strings.Join(msgs, "; "))
+}
+
+// IsDirEmpty returns whether directory has any files.
+func IsDirEmpty(dir string) (bool, error) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either not empty or error, suits both cases
+}
+
+// RandString returns random (base32) string with prefix.
+func RandString(prefix string, numbytes int) (string, error) {
+	buf, err := RandBytes(numbytes)
+	if err != nil {
+		return "", err
+	}
+	str := base32.StdEncoding.EncodeToString(buf)
+	if prefix != "" {
+		str = strings.Join([]string{prefix, str}, "")
+	}
+	return str, nil
+}
+
+func RandStringB64(numTriads int) string {
+	buf, err := RandBytes(numTriads * 3)
+	if err != nil {
+		return ""
+	}
+	return base64.URLEncoding.EncodeToString(buf)
+}
+
+func RandHexString(prefix string, numbytes int) (string, error) {
+	buf, err := RandBytes(numbytes)
+	if err != nil {
+		return "", err
+	}
+	str := hex.EncodeToString(buf)
+	return prefix + str, nil
+}
+
+func Trace(log logger.Logger, msg string, err *error) func() {
+	log = log.CloneWithAddedDepth(1)
+	log.Debug("+ %s", msg)
+	start := time.Now()
+	return func() { log.Debug("- %s -> %s [time=%s]", msg, ErrToOkPtr(err), time.Since(start)) }
+}
+
+func CTrace(ctx context.Context, log logger.Logger, msg string, err *error, cl clockwork.Clock) func() {
+	log = log.CloneWithAddedDepth(1)
+	log.CDebugf(ctx, "+ %s", msg)
+	start := cl.Now()
+	return func() {
+		if err != nil && *err != nil {
+			log.CDebugf(ctx, "- %s -> %v %T [time=%s]", msg, *err, err, cl.Since(start))
+		} else {
+			log.CDebugf(ctx, "- %s -> ok [time=%s]", msg, cl.Since(start))
+		}
+	}
+}
+
+func (g *GlobalContext) Trace(msg string, err *error) func() {
+	return Trace(g.Log.CloneWithAddedDepth(1), msg, err)
+}
+func (g *GlobalContext) CTrace(ctx context.Context, msg string, err *error) func() {
+	return CTrace(ctx, g.Log.CloneWithAddedDepth(1), msg, err, g.Clock())
+}
+func (g *GlobalContext) CPerfTrace(ctx context.Context, msg string, err *error) func() {
+	return CTrace(ctx, g.PerfLog, msg, err, g.Clock())
+}
+
+func (g *GlobalContext) CVTrace(ctx context.Context, lev VDebugLevel, msg string, err *error) func() {
+	cl := g.Clock()
+	g.VDL.CLogf(ctx, lev, "+ %s", msg)
+	start := cl.Now()
+	return func() {
+		g.VDL.CLogf(ctx, lev, "- %s -> %v [time=%s]", msg, ErrToOkPtr(err), cl.Since(start))
+	}
+}
+
+func (g *GlobalContext) CTimeTracer(ctx context.Context, label string, enabled bool) profiling.TimeTracer {
+	if enabled {
+		return profiling.NewTimeTracer(ctx, g.Log.CloneWithAddedDepth(1), g.Clock(), label)
+	}
+	return profiling.NewSilentTimeTracer()
+}
+
+func (g *GlobalContext) CTimeBuckets(ctx context.Context) (context.Context, *profiling.TimeBuckets) {
+	return profiling.WithTimeBuckets(ctx, g.Clock(), g.Log)
+}
+
+// SplitByRunes splits string by runes
+func SplitByRunes(s string, separators []rune) []string {
+	f := func(r rune) bool {
+		for _, s := range separators {
+			if r == s {
+				return true
+			}
+		}
+		return false
+	}
+	return strings.FieldsFunc(s, f)
+}
+
+// SplitPath return string split by path separator: SplitPath("/a/b/c") => []string{"a", "b", "c"}
+func SplitPath(s string) []string {
+	return SplitByRunes(s, []rune{filepath.Separator})
+}
+
+// IsSystemAdminUser returns true if current user is root or admin (system user, not Keybase user).
+// WARNING: You shouldn't rely on this for security purposes.
+func IsSystemAdminUser() (isAdminUser bool, match string, err error) {
+	u, err := user.Current()
+	if err != nil {
+		return
+	}
+
+	if u.Uid == "0" {
+		match = "Uid: 0"
+		isAdminUser = true
+		return
+	}
+	return
+}
+
+// DigestForFileAtPath returns a SHA256 digest for file at specified path
+func DigestForFileAtPath(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	return Digest(f)
+}
+
+// Digest returns a SHA256 digest
+func Digest(r io.Reader) (string, error) {
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, r); err != nil {
+		return "", err
+	}
+	digest := hex.EncodeToString(hasher.Sum(nil))
+	return digest, nil
+}
+
+// TimeLog calls out with the time since start.  Use like this:
+//
+//	defer TimeLog("MyFunc", time.Now(), e.G().Log.Warning)
+func TimeLog(name string, start time.Time, out func(string, ...interface{})) {
+	out("time> %s: %s", name, time.Since(start))
+}
+
+// CTimeLog calls out with the time since start.  Use like this:
+//
+//	defer CTimeLog(ctx, "MyFunc", time.Now(), e.G().Log.Warning)
+func CTimeLog(ctx context.Context, name string, start time.Time, out func(context.Context, string, ...interface{})) {
+	out(ctx, "time> %s: %s", name, time.Since(start))
+}
+
+var wsRE = regexp.MustCompile(`\s+`)
+
+func WhitespaceNormalize(s string) string {
+	v := wsRE.Split(s, -1)
+	if len(v) > 0 && len(v[0]) == 0 {
+		v = v[1:]
+	}
+	if len(v) > 0 && len(v[len(v)-1]) == 0 {
+		v = v[0 : len(v)-1]
+	}
+	return strings.Join(v, " ")
+}
+
+// JoinPredicate joins strings with predicate
+func JoinPredicate(arr []string, delimeter string, f func(s string) bool) string {
+	arrNew := make([]string, 0, len(arr))
+	for _, s := range arr {
+		if f(s) {
+			arrNew = append(arrNew, s)
+		}
+	}
+	return strings.Join(arrNew, delimeter)
+}
+
+// LogTagsFromContext is a wrapper around logger.LogTagsFromContext
+// that simply casts the result to the type expected by
+// rpc.Connection.
+func LogTagsFromContext(ctx context.Context) (map[interface{}]string, bool) {
+	tags, ok := logger.LogTagsFromContext(ctx)
+	return map[interface{}]string(tags), ok
+}
+
+func MakeByte24(a []byte) [24]byte {
+	const n = 24
+	if len(a) != n {
+		panic(fmt.Sprintf("MakeByte expected len %v but got %v slice", n, len(a)))
+	}
+	var b [n]byte
+	copy(b[:], a)
+	return b
+}
+
+func MakeByte32(a []byte) [32]byte {
+	const n = 32
+	if len(a) != n {
+		panic(fmt.Sprintf("MakeByte expected len %v but got %v slice", n, len(a)))
+	}
+	var b [n]byte
+	copy(b[:], a)
+	return b
+}
+
+func MakeByte32Soft(a []byte) ([32]byte, error) {
+	const n = 32
+	var b [n]byte
+	if len(a) != n {
+		return b, fmt.Errorf("MakeByte expected len %v but got %v slice", n, len(a))
+	}
+	copy(b[:], a)
+	return b, nil
+}
+
+// Sleep until `deadline` or until `ctx` is canceled, whichever occurs first.
+// Returns an error BUT the error is not really an error.
+// It is nil if the sleep finished, and the non-nil result of Context.Err()
+func SleepUntilWithContext(ctx context.Context, clock clockwork.Clock, deadline time.Time) error {
+	if ctx == nil {
+		// should not happen
+		clock.AfterTime(deadline)
+		return nil
+	}
+	select {
+	case <-clock.AfterTime(deadline):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func Sleep(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func UseCITime(g *GlobalContext) bool {
+	return g.GetEnv().RunningInCI() || g.GetEnv().GetSlowGregorConn()
+}
+
+func CITimeMultiplier(g *GlobalContext) time.Duration {
+	if UseCITime(g) {
+		return time.Duration(3)
+	}
+	return time.Duration(1)
+}
+
+func CanExec(p string) error {
+	return canExec(p)
+}
+
+func CurrentBinaryRealpath() (string, error) {
+	if IsMobilePlatform() {
+		return "mobile-binary-location-unknown", nil
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(executable)
+}
+
+var adminFeatureList = map[keybase1.UID]bool{
+	"23260c2ce19420f97b58d7d95b68ca00": true, // | chris        |
+	"dbb165b7879fe7b1174df73bed0b9500": true, // | max          |
+	"1563ec26dc20fd162a4f783551141200": true, // | patrick      |
+	"d73af57c418a917ba6665575eba13500": true, // | adamjspooner |
+	"95e88f2087e480cae28f08d81554bc00": true, // | mikem        |
+	"d1b3a5fa977ce53da2c2142a4511bc00": true, // | joshblum     |
+	"08abe80bd2da8984534b2d8f7b12c700": true, // | songgao      |
+	"237e85db5d939fbd4b84999331638200": true, // | cjb          |
+	"46fa8104092d0a680ad854bfc8507700": true, // | xgess        |
+	"69da56f622a2ac750b8e590c3658a700": true, // | jzila        |
+	"ef2e49961eddaa77094b45ed635cfc00": true, // | strib        |
+	"9403ede05906b942fd7361f40a679500": true, // | jinyang      |
+	"e0b4166c9c839275cf5633ff65c3e819": true, // | chrisnojima  |
+	"5f72055750c37c02a630122781508219": true, // | jakob223     |
+	"d95f137b3b4a3600bc9e39350adba819": true, // | cecileb      |
+	"eb08cb06e608ea41bd893946445d7919": true, // | mlsteele     |
+	"4a2c5d27346497ad64e3b7d457a1f919": true, // | pzduniak     |
+	"743338e8d5987e0e5077f0fddc763f19": true, // | taruti       |
+	"ee71dbc8e4e3e671e29a94caef5e1b19": true, // | zapu         |
+	"8c7c57995cd14780e351fc90ca7dc819": true, // | ayoubd       |
+	"b848bce3d54a76e4da323aad2957e819": true, // | modalduality |
+}
+
+// IsKeybaseAdmin returns true if uid is a keybase admin.
+func IsKeybaseAdmin(uid keybase1.UID) bool {
+	return adminFeatureList[uid]
+}
+
+// MobilePermissionDeniedCheck panics if err is a permission denied error
+// and if app is a mobile app. This has caused issues opening config.json
+// and secretkeys files, where it seems to be stuck in a permission
+// denied state and force-killing the app is the only option.
+func MobilePermissionDeniedCheck(g *GlobalContext, err error, msg string) {
+	if !os.IsPermission(err) {
+		return
+	}
+	if g.GetAppType() != MobileAppType {
+		return
+	}
+	g.Log.Warning("file open permission denied on mobile (%s): %s", msg, err)
+	os.Exit(4)
+}
+
+// IsNoSpaceOnDeviceError will return true if err is an `os` error
+// for "no space left on device".
+func IsNoSpaceOnDeviceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch err := err.(type) {
+	case NoSpaceOnDeviceError:
+		return true
+	case *os.PathError:
+		return err.Err == syscall.ENOSPC
+	case *os.LinkError:
+		return err.Err == syscall.ENOSPC
+	case *os.SyscallError:
+		return err.Err == syscall.ENOSPC
+	}
+
+	return false
+}
+
+func ShredFile(filename string) error {
+	stat, err := os.Stat(filename)
+	if err != nil {
+		return err
+	}
+	if stat.IsDir() {
+		return errors.New("cannot shred a directory")
+	}
+	size := int(stat.Size())
+
+	defer os.Remove(filename)
+
+	for i := 0; i < 3; i++ {
+		noise, err := RandBytes(size)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filename, noise, stat.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+
+	return os.Remove(filename)
+}
+
+func MPackEncode(input interface{}) ([]byte, error) {
+	mh := codec.MsgpackHandle{WriteExt: true}
+	var data []byte
+	enc := codec.NewEncoderBytes(&data, &mh)
+	if err := enc.Encode(input); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func MPackDecode(data []byte, res interface{}) error {
+	mh := codec.MsgpackHandle{WriteExt: true}
+	dec := codec.NewDecoderBytes(data, &mh)
+	err := dec.Decode(res)
+	return err
+}
+
+type NoiseBytes [noiseFileLen]byte
+
+func MakeNoise() (nb NoiseBytes, err error) {
+	noise, err := RandBytes(noiseFileLen)
+	if err != nil {
+		return nb, err
+	}
+	copy(nb[:], noise)
+	return nb, nil
+}
+
+func NoiseXOR(secret [32]byte, noise NoiseBytes) ([]byte, error) {
+	sum := sha256.Sum256(noise[:])
+	if len(sum) != len(secret) {
+		return nil, errors.New("secret or sha256.Size is no longer 32")
+	}
+
+	xor := make([]byte, len(sum))
+	for i := 0; i < len(sum); i++ {
+		xor[i] = sum[i] ^ secret[i]
+	}
+
+	return xor, nil
+}
+
+// ForceWallClock takes a multi-personality Go time and converts it to
+// a regular old WallClock time.
+func ForceWallClock(t time.Time) time.Time {
+	return t.Round(0)
+}
+
+// Decode decodes src into dst.
+// Errors unless all of:
+// - src is valid hex
+// - src decodes into exactly len(dst) bytes
+func DecodeHexFixed(dst, src []byte) error {
+	// hex.Decode is wrapped because it does not error on short reads and panics on long reads.
+	if len(src)%2 == 1 {
+		return hex.ErrLength
+	}
+	if len(dst) != hex.DecodedLen(len(src)) {
+		return NewHexWrongLengthError(fmt.Sprintf(
+			"error decoding fixed-length hex: expected %v bytes but got %v", len(dst), hex.DecodedLen(len(src))))
+	}
+	n, err := hex.Decode(dst, src)
+	if err != nil {
+		return err
+	}
+	if n != len(dst) {
+		return NewHexWrongLengthError(fmt.Sprintf(
+			"error decoding fixed-length hex: expected %v bytes but got %v", len(dst), n))
+	}
+	return nil
+}
+
+func IsIOS() bool {
+	return isIOS
+}
+
+// AcquireWithContext attempts to acquire a lock with a context.
+// Returns nil if the lock was acquired.
+// Returns an error if it was not. The error is from ctx.Err().
+func AcquireWithContext(ctx context.Context, lock sync.Locker) (err error) {
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	acquiredCh := make(chan struct{})
+	shouldReleaseCh := make(chan bool, 1)
+	go func() {
+		lock.Lock()
+		close(acquiredCh)
+		shouldRelease := <-shouldReleaseCh
+		if shouldRelease {
+			lock.Unlock()
+		}
+	}()
+	select {
+	case <-acquiredCh:
+		err = nil
+	case <-ctx.Done():
+		err = ctx.Err()
+	}
+	shouldReleaseCh <- err != nil
+	return err
+}
+
+// AcquireWithTimeout attempts to acquire a lock with a timeout.
+// Convenience wrapper around AcquireWithContext.
+// Returns nil if the lock was acquired.
+// Returns context.DeadlineExceeded if it was not.
+func AcquireWithTimeout(lock sync.Locker, timeout time.Duration) (err error) {
+	ctx2, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return AcquireWithContext(ctx2, lock)
+}
+
+// AcquireWithContextAndTimeout attempts to acquire a lock with a context and a timeout.
+// Convenience wrapper around AcquireWithContext.
+// Returns nil if the lock was acquired.
+// Returns context.DeadlineExceeded or the error from ctx.Err() if it was not.
+func AcquireWithContextAndTimeout(ctx context.Context, lock sync.Locker, timeout time.Duration) (err error) {
+	ctx2, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return AcquireWithContext(ctx2, lock)
+}
+
+func Once(f func()) func() {
+	var once sync.Once
+	return func() {
+		once.Do(f)
+	}
+}
+
+func RuntimeGroup() keybase1.RuntimeGroup {
+	return runtimeGroup(runtime.GOOS)
+}
+
+func runtimeGroup(osname string) keybase1.RuntimeGroup {
+	switch osname {
+	case "linux", "dragonfly", "freebsd", "netbsd", "openbsd", "android":
+		return keybase1.RuntimeGroup_LINUXLIKE
+	case "darwin", "ios":
+		return keybase1.RuntimeGroup_DARWINLIKE
+	case "windows":
+		return keybase1.RuntimeGroup_WINDOWSLIKE
+	default:
+		return keybase1.RuntimeGroup_UNKNOWN
+	}
+}
+
+// execToString returns the space-trimmed output of a command or an error.
+func execToString(bin string, args []string) (string, error) {
+	result, err := exec.Command(bin, args...).Output()
+	if err != nil {
+		return "", err
+	}
+	if result == nil {
+		return "", fmt.Errorf("Nil result")
+	}
+	return strings.TrimSpace(string(result)), nil
+}
+
+var preferredKBFSMountDirs = func() []string {
+	switch RuntimeGroup() {
+	case keybase1.RuntimeGroup_LINUXLIKE:
+		return []string{"/keybase"}
+	case keybase1.RuntimeGroup_DARWINLIKE:
+		return []string{"/keybase", "/Volumes/Keybase"}
+	default:
+		return []string{}
+	}
+}()
+
+func FindPreferredKBFSMountDirs() (mountDirs []string) {
+	for _, mountDir := range preferredKBFSMountDirs {
+		fi, err := os.Lstat(filepath.Join(mountDir, "private"))
+		if err != nil {
+			continue
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			mountDirs = append(mountDirs, mountDir)
+		}
+	}
+	return mountDirs
+}
+
+var kbfsPathInnerRegExp = func() *regexp.Regexp {
+	// e.g. alice@twitter
+	const regularAssertion = `[-_a-zA-Z0-9.+]+@[a-zA-Z.]+`
+	// e.g. [bob@keybase.io]@email
+	const emailAssertion = `\[[-_+a-zA-Z0-9.]+@[-_a-zA-Z0-9.]+\]@[a-zA-Z.]+`
+	const socialAssertion = `(?:` + regularAssertion + `)|(?:` + emailAssertion + `)`
+	const user = `(?:(?:` + kbun.UsernameRE + `)|(?:` + socialAssertion + `))`
+	const usernames = user + `(?:,` + user + `)*`
+	const teamName = kbun.UsernameRE + `(?:\.` + kbun.UsernameRE + `)*`
+	const tlfType = "/(?:private|public|team)$"
+	const suffix = `(?: \([-_a-zA-Z0-9 #]+\))?`
+	const tlf = "/(?:(?:private|public)/" + usernames + "(?:#" + usernames + ")?|team/" + teamName + ")" + suffix + "(?:/|$)"
+	const specialFiles = "/(?:.kbfs_.+)"
+	return regexp.MustCompile(`^(?:(?:` + tlf + `)|(?:` + tlfType + `)|(?:` + specialFiles + `))`)
+}()
+
+// IsKBFSAfterKeybasePath returns true if afterKeybase, after prefixed by
+// /keybase, is a valid KBFS path.
+func IsKBFSAfterKeybasePath(afterKeybase string) bool {
+	return len(afterKeybase) == 0 || kbfsPathInnerRegExp.MatchString(afterKeybase)
+}
+
+func getKBFSAfterMountPath(afterKeybase string, isWindows bool) string {
+	afterMount := afterKeybase
+	if len(afterMount) == 0 {
+		afterMount = "/"
+	}
+
+	if !isWindows {
+		return afterMount
+	}
+
+	// Encode path names for Windows
+	elems := strings.Split(afterMount, "/")
+	for i, elem := range elems {
+		elems[i] = EncodeKbfsNameForWindows(elem)
+	}
+	return strings.Join(elems, "\\")
+}
+
+func getKBFSDeeplinkPath(afterKeybase string) string {
+	if len(afterKeybase) == 0 {
+		return ""
+	}
+	var segments []string
+	for _, segment := range strings.Split(afterKeybase, "/") {
+		segments = append(segments, url.PathEscape(segment))
+	}
+	return "keybase:/" + strings.Join(segments, "/")
+}
+
+func GetKBFSPathInfo(standardPath string) (pathInfo keybase1.KBFSPathInfo, err error) {
+	const slashKeybase = "/keybase"
+	if !strings.HasPrefix(standardPath, slashKeybase) {
+		return keybase1.KBFSPathInfo{}, errors.New("not a KBFS path")
+	}
+
+	afterKeybase := standardPath[len(slashKeybase):]
+
+	if !IsKBFSAfterKeybasePath(afterKeybase) {
+		return keybase1.KBFSPathInfo{}, errors.New("not a KBFS path")
+	}
+
+	return keybase1.KBFSPathInfo{
+		StandardPath:           standardPath,
+		DeeplinkPath:           getKBFSDeeplinkPath(afterKeybase),
+		PlatformAfterMountPath: getKBFSAfterMountPath(afterKeybase, RuntimeGroup() == keybase1.RuntimeGroup_WINDOWSLIKE),
+	}, nil
+}
+
+func GetSafeFilename(filename string) (safeFilename string) {
+	filename = filepath.Base(filename)
+	if !utf8.ValidString(filename) {
+		return url.PathEscape(filename)
+	}
+	for _, r := range filename {
+		if unicode.Is(unicode.C, r) {
+			safeFilename += url.PathEscape(string(r))
+		} else {
+			safeFilename += string(r)
+		}
+	}
+	return safeFilename
+}
+
+func GetSafePath(path string) (safePath string) {
+	dir, file := filepath.Split(path)
+	return filepath.Join(dir, GetSafeFilename(file))
+}
+
+func FindFilePathWithNumberSuffix(parentDir string, basename string, useArbitraryName bool) (filePath string, err error) {
+	ext := filepath.Ext(basename)
+	if useArbitraryName {
+		return filepath.Join(parentDir, strconv.FormatInt(time.Now().UnixNano(), 16)+ext), nil
+	}
+	destPath := filepath.Join(parentDir, basename)
+	basename = basename[:len(basename)-len(ext)]
+	// keep a sane limit on the loop.
+	for suffix := 1; suffix < 100000; suffix++ {
+		_, err := os.Stat(destPath)
+		if os.IsNotExist(err) {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		destPath = filepath.Join(parentDir, fmt.Sprintf("%s (%d)%s", basename, suffix, ext))
+	}
+	// Could race but it should be rare enough so fine.
+	return destPath, nil
+}
+
+func JsonwStringArray(a []string) *jsonw.Wrapper {
+	aj := jsonw.NewArray(len(a))
+	for i, s := range a {
+		_ = aj.SetIndex(i, jsonw.NewString(s))
+	}
+	return aj
+}
+
+var throttleBatchClock = clockwork.NewRealClock()
+
+type throttleBatchEmpty struct{}
+
+func isEmptyThrottleData(arg interface{}) bool {
+	_, ok := arg.(throttleBatchEmpty)
+	return ok
+}
+
+func ThrottleBatch(f func(interface{}), batcher func(interface{}, interface{}) interface{},
+	reset func() interface{}, delay time.Duration, leadingFire bool) (func(interface{}), func()) {
+	var lock sync.Mutex
+	var closeLock sync.Mutex
+	var lastCalled time.Time
+	var creation func(interface{})
+	hasStored := false
+	scheduled := false
+	stored := reset()
+	cancelCh := make(chan struct{})
+	closed := false
+	creation = func(arg interface{}) {
+		lock.Lock()
+		defer lock.Unlock()
+		elapsed := throttleBatchClock.Since(lastCalled)
+		isEmpty := isEmptyThrottleData(arg)
+		leading := leadingFire || hasStored
+		if !isEmpty {
+			stored = batcher(stored, arg)
+			hasStored = true
+		}
+		if elapsed > delay && (!isEmpty || hasStored) && leading {
+			f(stored)
+			stored = reset()
+			hasStored = false
+			lastCalled = throttleBatchClock.Now()
+		} else if !scheduled && !isEmpty {
+			scheduled = true
+			go func() {
+				select {
+				case <-throttleBatchClock.After(delay - elapsed):
+					lock.Lock()
+					scheduled = false
+					lock.Unlock()
+					creation(throttleBatchEmpty{})
+				case <-cancelCh:
+					return
+				}
+			}()
+		}
+	}
+	return creation, func() {
+		closeLock.Lock()
+		defer closeLock.Unlock()
+		if closed {
+			return
+		}
+		closed = true
+		close(cancelCh)
+	}
+}
+
+// Format a proof for web-of-trust. Does not support all proof types.
+func NewWotProof(proofType keybase1.ProofType, key, value string) (res keybase1.WotProof, err error) {
+	switch proofType {
+	case keybase1.ProofType_TWITTER, keybase1.ProofType_GITHUB, keybase1.ProofType_REDDIT,
+		keybase1.ProofType_COINBASE, keybase1.ProofType_HACKERNEWS, keybase1.ProofType_FACEBOOK,
+		keybase1.ProofType_GENERIC_SOCIAL, keybase1.ProofType_ROOTER:
+		return keybase1.WotProof{
+			ProofType: proofType,
+			Name:      key,
+			Username:  value,
+		}, nil
+	case keybase1.ProofType_GENERIC_WEB_SITE:
+		return keybase1.WotProof{
+			ProofType: proofType,
+			Protocol:  key,
+			Hostname:  value,
+		}, nil
+	case keybase1.ProofType_DNS:
+		return keybase1.WotProof{
+			ProofType: proofType,
+			Protocol:  key,
+			Domain:    value,
+		}, nil
+	default:
+		return res, fmt.Errorf("unexpected proof type: %v", proofType)
+	}
+}
+
+// Format a web-of-trust proof for gui display.
+func NewWotProofUI(mctx MetaContext, proof keybase1.WotProof) (res keybase1.WotProofUI, err error) {
+	iconKey := ProofIconKey(mctx, proof.ProofType, proof.Name)
+	res = keybase1.WotProofUI{
+		SiteIcon:         MakeProofIcons(mctx, iconKey, ProofIconTypeSmall, 16),
+		SiteIconDarkmode: MakeProofIcons(mctx, iconKey, ProofIconTypeSmallDarkmode, 16),
+	}
+	switch proof.ProofType {
+	case keybase1.ProofType_TWITTER, keybase1.ProofType_GITHUB, keybase1.ProofType_REDDIT,
+		keybase1.ProofType_COINBASE, keybase1.ProofType_HACKERNEWS, keybase1.ProofType_FACEBOOK,
+		keybase1.ProofType_GENERIC_SOCIAL, keybase1.ProofType_ROOTER:
+		res.Type = proof.Name
+		res.Value = proof.Username
+	case keybase1.ProofType_GENERIC_WEB_SITE:
+		res.Type = proof.Protocol
+		res.Value = proof.Hostname
+	case keybase1.ProofType_DNS:
+		res.Type = "dns"
+		res.Value = proof.Domain
+	default:
+		return res, fmt.Errorf("unexpected proof type: %v", proof.ProofType)
+	}
+	return res, nil
+}
+
+func ProofIconKey(mctx MetaContext, proofType keybase1.ProofType, genericKeyAndFallback string) (iconKey string) {
+	switch proofType {
+	case keybase1.ProofType_TWITTER:
+		return "twitter"
+	case keybase1.ProofType_GITHUB:
+		return "github"
+	case keybase1.ProofType_REDDIT:
+		return "reddit"
+	case keybase1.ProofType_HACKERNEWS:
+		return "hackernews"
+	case keybase1.ProofType_FACEBOOK:
+		return "facebook"
+	case keybase1.ProofType_GENERIC_SOCIAL:
+		serviceType := mctx.G().GetProofServices().GetServiceType(mctx.Ctx(), genericKeyAndFallback)
+		if serviceType != nil {
+			return serviceType.GetLogoKey()
+		}
+		return genericKeyAndFallback
+	case keybase1.ProofType_GENERIC_WEB_SITE, keybase1.ProofType_DNS:
+		return "web"
+	default:
+		return genericKeyAndFallback
+	}
+}

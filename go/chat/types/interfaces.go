@@ -1,0 +1,694 @@
+package types
+
+import (
+	"io"
+	"os"
+	"regexp"
+	"time"
+
+	"github.com/keybase/client/go/badges"
+	"github.com/keybase/client/go/chat/s3"
+	"github.com/keybase/client/go/gregor"
+	"github.com/keybase/client/go/libkb"
+	"github.com/keybase/client/go/protocol/chat1"
+	"github.com/keybase/client/go/protocol/gregor1"
+	"github.com/keybase/client/go/protocol/keybase1"
+	"github.com/keybase/client/go/protocol/stellar1"
+	context "golang.org/x/net/context"
+)
+
+type Offlinable interface {
+	IsOffline(ctx context.Context) bool
+	Connected(ctx context.Context)
+	Disconnected(ctx context.Context)
+}
+
+type Resumable interface {
+	Start(ctx context.Context, uid gregor1.UID)
+	Stop(ctx context.Context) chan struct{}
+}
+
+type Suspendable interface {
+	Suspend(ctx context.Context) bool
+	Resume(ctx context.Context) bool
+}
+
+type BackgroundRunnable interface {
+	IsBackgroundActive() bool
+}
+
+type CryptKey interface {
+	Material() keybase1.Bytes32
+	Generation() int
+}
+
+type EphemeralCryptKey interface {
+	Material() keybase1.Bytes32
+	Generation() keybase1.EkGeneration
+}
+
+type AllCryptKeys map[chat1.ConversationMembersType][]CryptKey
+
+type NameInfoSource interface {
+	LookupID(ctx context.Context, name string, public bool) (NameInfo, error)
+	LookupName(ctx context.Context, tlfID chat1.TLFID, public bool, unverifiedTLFName string) (NameInfo, error)
+	AllCryptKeys(ctx context.Context, name string, public bool) (AllCryptKeys, error)
+	EncryptionKey(ctx context.Context, tlfName string, tlfID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, botUID *gregor1.UID) (CryptKey, NameInfo, error)
+	DecryptionKey(ctx context.Context, tlfName string, tlfID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool,
+		keyGeneration int, kbfsEncrypted bool, botUID *gregor1.UID) (CryptKey, error)
+	EphemeralEncryptionKey(mctx libkb.MetaContext, tlfName string, tlfID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, botUID *gregor1.UID) (EphemeralCryptKey, error)
+	EphemeralDecryptionKey(mctx libkb.MetaContext, tlfName string, tlfID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, botUID *gregor1.UID,
+		generation keybase1.EkGeneration, contentCtime *gregor1.Time) (EphemeralCryptKey, error)
+	ShouldPairwiseMAC(ctx context.Context, tlfName string, tlfID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool) (bool, []keybase1.KID, error)
+	TeamBotSettings(ctx context.Context, tlfName string, tlfID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool) (map[keybase1.UserVersion]keybase1.TeamBotSettings, error)
+}
+
+type UnboxConversationInfo interface {
+	GetConvID() chat1.ConversationID
+	GetMembersType() chat1.ConversationMembersType
+	GetFinalizeInfo() *chat1.ConversationFinalizeInfo
+	GetExpunge() *chat1.Expunge
+	GetMaxDeletedUpTo() chat1.MessageID
+	IsPublic() bool
+	GetMaxMessage(chat1.MessageType) (chat1.MessageSummary, error)
+}
+
+type ConversationSource interface {
+	AcquireConversationLock(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) error
+	ReleaseConversationLock(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID)
+
+	Push(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		msg chat1.MessageBoxed) (chat1.MessageUnboxed, bool, error)
+	PushUnboxed(ctx context.Context, conv UnboxConversationInfo,
+		uid gregor1.UID, msg []chat1.MessageUnboxed) error
+	Pull(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, reason chat1.GetThreadReason,
+		ri func() chat1.RemoteInterface, query *chat1.GetThreadQuery, pagination *chat1.Pagination) (chat1.ThreadView, error)
+	PullLocalOnly(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		reason chat1.GetThreadReason, query *chat1.GetThreadQuery, p *chat1.Pagination, maxPlaceholders int) (chat1.ThreadView, error)
+	PullFull(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, reason chat1.GetThreadReason,
+		query *chat1.GetThreadQuery, maxPages *int) (chat1.ThreadView, error)
+	GetMessage(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, msgID chat1.MessageID,
+		reason *chat1.GetThreadReason, ri func() chat1.RemoteInterface, resolveSupersedes bool) (chat1.MessageUnboxed, error)
+	GetMessages(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, msgIDs []chat1.MessageID,
+		reason *chat1.GetThreadReason, ri func() chat1.RemoteInterface, resolveSupersedes bool) ([]chat1.MessageUnboxed, error)
+	GetMessagesWithRemotes(ctx context.Context, conv chat1.Conversation, uid gregor1.UID,
+		msgs []chat1.MessageBoxed) ([]chat1.MessageUnboxed, error)
+	GetUnreadline(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		readMsgID chat1.MessageID) (*chat1.MessageID, error)
+	Clear(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, opts *ClearOpts) error
+	TransformSupersedes(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		msgs []chat1.MessageUnboxed, q *chat1.GetThreadQuery, superXform SupersedesTransform,
+		replyFiller ReplyFiller, maxDeletedUpTo *chat1.MessageID) ([]chat1.MessageUnboxed, error)
+	Expunge(ctx context.Context, conv UnboxConversationInfo, uid gregor1.UID, expunge chat1.Expunge) error
+	EphemeralPurge(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		purgeInfo *chat1.EphemeralPurgeInfo) (*chat1.EphemeralPurgeInfo, []chat1.MessageUnboxed, error)
+
+	SetRemoteInterface(func() chat1.RemoteInterface)
+	DeleteAssets(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, assets []chat1.Asset)
+}
+
+type MessageDeliverer interface {
+	Offlinable
+	Resumable
+
+	Queue(ctx context.Context, convID chat1.ConversationID, msg chat1.MessagePlaintext,
+		outboxID *chat1.OutboxID, sendOpts *chat1.SenderSendOptions,
+		prepareOpts *chat1.SenderPrepareOptions, identifyBehavior keybase1.TLFIdentifyBehavior) (chat1.OutboxRecord, error)
+	ForceDeliverLoop(ctx context.Context)
+	ActiveDeliveries(ctx context.Context) ([]chat1.OutboxRecord, error)
+	NextFailure() (chan []chat1.OutboxRecord, func())
+}
+
+type RegexpSearcher interface {
+	Search(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		re *regexp.Regexp, uiCh chan chat1.ChatSearchHit, opts chat1.SearchOpts) ([]chat1.ChatSearchHit, []chat1.MessageUnboxed, error)
+}
+
+type Indexer interface {
+	Resumable
+	Suspendable
+	BackgroundRunnable
+
+	Search(ctx context.Context, query, origQuery string, opts chat1.SearchOpts,
+		hitUICh chan chat1.ChatSearchInboxHit, indexUICh chan chat1.ChatSearchIndexStatus) (*chat1.ChatSearchInboxResults, error)
+	// Add/update the index with the given messages
+	Add(ctx context.Context, convID chat1.ConversationID, msg []chat1.MessageUnboxed) error
+	// Remove the given messages from the index
+	Remove(ctx context.Context, convID chat1.ConversationID, msg []chat1.MessageUnboxed) error
+	// Clear search index data for the given user and conversation.
+	Clear(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) error
+	FullyIndexed(ctx context.Context, convID chat1.ConversationID) (bool, error)
+	PercentIndexed(ctx context.Context, convID chat1.ConversationID) (int, error)
+	SearchableConvs(ctx context.Context, convID *chat1.ConversationID) ([]RemoteConversation, error)
+	OnDbNuke(mctx libkb.MetaContext) error
+	// For devel/testing
+	IndexInbox(ctx context.Context) (map[chat1.ConvIDStr]chat1.ProfileSearchConvStats, error)
+}
+
+type Sender interface {
+	Send(ctx context.Context, convID chat1.ConversationID, msg chat1.MessagePlaintext,
+		clientPrev chat1.MessageID, outboxID *chat1.OutboxID,
+		sendOpts *chat1.SenderSendOptions, prepareOpts *chat1.SenderPrepareOptions) (chat1.OutboxID, *chat1.MessageBoxed, error)
+	Prepare(ctx context.Context, msg chat1.MessagePlaintext, membersType chat1.ConversationMembersType,
+		conv *chat1.ConversationLocal, opts *chat1.SenderPrepareOptions) (SenderPrepareResult, error)
+}
+
+type InboxSource interface {
+	Offlinable
+	Resumable
+	Suspendable
+	badges.LocalChatState
+
+	Clear(ctx context.Context, uid gregor1.UID, opts *ClearOpts) error
+	Read(ctx context.Context, uid gregor1.UID, localizeTyp ConversationLocalizerTyp,
+		dataSource InboxSourceDataSourceTyp, maxLocalize *int, query *chat1.GetInboxLocalQuery) (Inbox, chan AsyncInboxResult, error)
+	ReadUnverified(ctx context.Context, uid gregor1.UID, dataSource InboxSourceDataSourceTyp,
+		query *chat1.GetInboxQuery) (Inbox, error)
+	Localize(ctx context.Context, uid gregor1.UID, convs []RemoteConversation,
+		localizeTyp ConversationLocalizerTyp) ([]chat1.ConversationLocal, chan AsyncInboxResult, error)
+	RemoteSetConversationStatus(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		status chat1.ConversationStatus) error
+	RemoteDeleteConversation(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) error
+	Search(ctx context.Context, uid gregor1.UID, query string, limit int,
+		emptyMode InboxSourceSearchEmptyMode) ([]RemoteConversation, error)
+	MarkAsRead(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		msgID *chat1.MessageID, forceUnread bool) error
+	Draft(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, text *string) error
+	NotifyUpdate(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID)
+	IncrementLocalConvVersion(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) (*chat1.ConversationLocal, error)
+	MergeLocalMetadata(ctx context.Context, uid gregor1.UID, convs []chat1.ConversationLocal) error
+
+	Sync(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convs []chat1.Conversation) (InboxSyncRes, error)
+	NewConversation(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
+		conv chat1.Conversation) error
+	IsMember(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) (bool, error)
+	IsTeam(ctx context.Context, uid gregor1.UID, item string) (bool, error)
+	NewMessage(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		msg chat1.MessageBoxed, maxMsgs []chat1.MessageSummary) (*chat1.ConversationLocal, error)
+	ReadMessage(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		msgID chat1.MessageID) (*chat1.ConversationLocal, error)
+	SetStatus(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		status chat1.ConversationStatus) (*chat1.ConversationLocal, error)
+	SetAppNotificationSettings(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
+		convID chat1.ConversationID, settings chat1.ConversationNotificationInfo) (*chat1.ConversationLocal, error)
+	TlfFinalize(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
+		convIDs []chat1.ConversationID, finalizeInfo chat1.ConversationFinalizeInfo) ([]chat1.ConversationLocal, error)
+	MembershipUpdate(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
+		joined []chat1.ConversationMember, removed []chat1.ConversationMember,
+		resets []chat1.ConversationMember, previews []chat1.ConversationID,
+		teamMemberRoleUpdate *chat1.TeamMemberRoleUpdate) (MembershipUpdateRes, error)
+	ConversationsUpdate(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
+		convUpdates []chat1.ConversationUpdate) error
+	TeamTypeChanged(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		teamType chat1.TeamType) (*chat1.ConversationLocal, error)
+	UpgradeKBFSToImpteam(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
+		convID chat1.ConversationID) (*chat1.ConversationLocal, error)
+	Expunge(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		expunge chat1.Expunge, maxMsgs []chat1.MessageSummary) (*chat1.ConversationLocal, error)
+	SetConvRetention(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		policy chat1.RetentionPolicy) (*chat1.ConversationLocal, error)
+	SetTeamRetention(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, teamID keybase1.TeamID,
+		policy chat1.RetentionPolicy) ([]chat1.ConversationLocal, error)
+	SetConvSettings(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convID chat1.ConversationID,
+		convSettings *chat1.ConversationSettings) (*chat1.ConversationLocal, error)
+	SubteamRename(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers, convIDs []chat1.ConversationID) ([]chat1.ConversationLocal, error)
+	UpdateInboxVersion(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers) error
+
+	GetInboxQueryLocalToRemote(ctx context.Context,
+		lquery *chat1.GetInboxLocalQuery) (*chat1.GetInboxQuery, NameInfo, error)
+	UpdateLocalMtime(ctx context.Context, uid gregor1.UID, updates []chat1.LocalMtimeUpdate) error
+	TeamBotSettingsForConv(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) (
+		map[keybase1.UID]keybase1.TeamBotSettings, error)
+
+	SetRemoteInterface(func() chat1.RemoteInterface)
+}
+
+type ServerCacheVersions interface {
+	Set(ctx context.Context, vers chat1.ServerCacheVers) error
+	MatchBodies(ctx context.Context, vers int) (int, error)
+	MatchInbox(ctx context.Context, vers int) (int, error)
+	Fetch(ctx context.Context) (chat1.ServerCacheVers, error)
+}
+
+type Syncer interface {
+	IsConnected(ctx context.Context) bool
+	Connected(ctx context.Context, cli chat1.RemoteInterface, uid gregor1.UID,
+		syncRes *chat1.SyncChatRes) error
+	Disconnected(ctx context.Context)
+	Sync(ctx context.Context, cli chat1.RemoteInterface, uid gregor1.UID,
+		syncRes *chat1.SyncChatRes) error
+	RegisterOfflinable(offlinable Offlinable)
+	SendChatStaleNotifications(ctx context.Context, uid gregor1.UID,
+		updates []chat1.ConversationStaleUpdate, immediate bool)
+	SelectConversation(ctx context.Context, convID chat1.ConversationID)
+	GetSelectedConversation() chat1.ConversationID
+	IsSelectedConversation(chat1.ConversationID) bool
+	Shutdown()
+}
+
+type RetryDescription interface {
+	Fix(ctx context.Context, uid gregor1.UID) error
+	SendStale(ctx context.Context, uid gregor1.UID)
+	String() string
+	RekeyFixable(ctx context.Context, tlfID chat1.TLFID) bool
+}
+
+type FetchRetrier interface {
+	Offlinable
+	Resumable
+
+	Failure(ctx context.Context, uid gregor1.UID, desc RetryDescription)
+	Success(ctx context.Context, uid gregor1.UID, desc RetryDescription)
+	Force(ctx context.Context)
+	Rekey(ctx context.Context, name string, membersType chat1.ConversationMembersType,
+		public bool)
+}
+
+type ConvLoader interface {
+	Resumable
+	Suspendable
+	BackgroundRunnable
+
+	Queue(ctx context.Context, job ConvLoaderJob) error
+}
+
+type OobmHandler interface {
+	HandleOobm(context.Context, gregor.OutOfBandMessage) (bool, error)
+}
+
+type PushHandler interface {
+	Resumable
+	TlfFinalize(context.Context, gregor.OutOfBandMessage) error
+	TlfResolve(context.Context, gregor.OutOfBandMessage) error
+	Activity(context.Context, gregor.OutOfBandMessage) error
+	Typing(context.Context, gregor.OutOfBandMessage) error
+	MembershipUpdate(context.Context, gregor.OutOfBandMessage) error
+	UpgradeKBFSToImpteam(ctx context.Context, m gregor.OutOfBandMessage) error
+	OobmHandler
+}
+
+type MobileAppState interface {
+	State() keybase1.MobileAppState
+	NextUpdate() chan keybase1.MobileAppState
+}
+
+type TeamChannelSource interface {
+	GetLastActiveForTLF(context.Context, gregor1.UID, chat1.TLFID, chat1.TopicType) (gregor1.Time, error)
+	GetLastActiveForTeams(context.Context, gregor1.UID, chat1.TopicType) (chat1.LastActiveTimeAll, error)
+	GetChannelsFull(context.Context, gregor1.UID, chat1.TLFID, chat1.TopicType) ([]chat1.ConversationLocal, error)
+	GetChannelsTopicName(ctx context.Context, uid gregor1.UID,
+		teamID chat1.TLFID, topicType chat1.TopicType) ([]chat1.ChannelNameMention, error)
+	GetChannelTopicName(ctx context.Context, uid gregor1.UID,
+		tlfID chat1.TLFID, topicType chat1.TopicType, convID chat1.ConversationID) (string, error)
+	GetRecentJoins(ctx context.Context, convID chat1.ConversationID, remoteClient chat1.RemoteInterface) (int, error)
+	GetLastActiveAt(ctx context.Context, teamID keybase1.TeamID, uid gregor1.UID, remoteClient chat1.RemoteInterface) (gregor1.Time, error)
+	OnLogout(libkb.MetaContext) error
+	OnDbNuke(libkb.MetaContext) error
+}
+
+type ActivityNotifier interface {
+	Activity(ctx context.Context, uid gregor1.UID, topicType chat1.TopicType, activity *chat1.ChatActivity,
+		source chat1.ChatActivitySource)
+	TypingUpdate(ctx context.Context, updates []chat1.ConvTypingUpdate)
+	JoinedConversation(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType, conv *chat1.InboxUIItem)
+	LeftConversation(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType)
+	ResetConversation(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType)
+	KBFSToImpteamUpgrade(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType)
+	SetConvRetention(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType, conv *chat1.InboxUIItem)
+	SetTeamRetention(ctx context.Context, uid gregor1.UID, teamID keybase1.TeamID,
+		topicType chat1.TopicType, convs []chat1.InboxUIItem)
+	SetConvSettings(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType, conv *chat1.InboxUIItem)
+	SubteamRename(ctx context.Context, uid gregor1.UID, convIDs []chat1.ConversationID,
+		topicType chat1.TopicType, convs []chat1.InboxUIItem)
+
+	InboxSyncStarted(ctx context.Context, uid gregor1.UID)
+	InboxSynced(ctx context.Context, uid gregor1.UID, topicType chat1.TopicType, syncRes chat1.ChatSyncResult)
+	InboxStale(ctx context.Context, uid gregor1.UID)
+	ThreadsStale(ctx context.Context, uid gregor1.UID, updates []chat1.ConversationStaleUpdate)
+
+	TLFFinalize(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, topicType chat1.TopicType,
+		finalizeInfo chat1.ConversationFinalizeInfo, conv *chat1.InboxUIItem)
+	TLFResolve(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, topicType chat1.TopicType,
+		resolveInfo chat1.ConversationResolveInfo)
+
+	AttachmentUploadStart(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		outboxID chat1.OutboxID)
+	AttachmentUploadProgress(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		outboxID chat1.OutboxID, bytesComplete, bytesTotal int64)
+
+	PromptUnfurl(ctx context.Context, uid gregor1.UID,
+		convID chat1.ConversationID, msgID chat1.MessageID, domain string)
+	ConvUpdate(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		topicType chat1.TopicType, conv *chat1.InboxUIItem)
+}
+
+type IdentifyNotifier interface {
+	Reset()
+	ResetOnGUIConnect()
+	Send(ctx context.Context, update keybase1.CanonicalTLFNameAndIDWithBreaks)
+}
+
+type KeyFinder interface {
+	FindForEncryption(ctx context.Context, tlfName string, teamID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, botUID *gregor1.UID) (CryptKey, NameInfo, error)
+	FindForDecryption(ctx context.Context, tlfName string, teamID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, keyGeneration int,
+		kbfsEncrypted bool, botUID *gregor1.UID) (CryptKey, error)
+	EphemeralKeyForEncryption(mctx libkb.MetaContext, tlfName string, teamID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, botUID *gregor1.UID) (EphemeralCryptKey, error)
+	EphemeralKeyForDecryption(mctx libkb.MetaContext, tlfName string, teamID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool, botUID *gregor1.UID,
+		generation keybase1.EkGeneration, contentCtime *gregor1.Time) (EphemeralCryptKey, error)
+	ShouldPairwiseMAC(ctx context.Context, tlfName string, teamID chat1.TLFID,
+		membersType chat1.ConversationMembersType, public bool) (bool, []keybase1.KID, error)
+	Reset()
+}
+
+type UPAKFinder interface {
+	LookupUsernameAndDevice(ctx context.Context, uid keybase1.UID, deviceID keybase1.DeviceID) (username libkb.NormalizedUsername, deviceName string, deviceType keybase1.DeviceTypeV2, err error)
+	CheckKIDForUID(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (found bool, revokedAt *keybase1.KeybaseTime, deleted bool, err error)
+}
+
+type ContextFactory interface {
+	NewKeyFinder() KeyFinder
+	NewUPAKFinder() UPAKFinder
+}
+
+type ProgressReporter func(bytesCompleted, bytesTotal int64)
+
+type AttachmentFetcher interface {
+	DeleteAssets(ctx context.Context, convID chat1.ConversationID, assets []chat1.Asset,
+		ri func() chat1.RemoteInterface, signer s3.Signer) error
+	FetchAttachment(ctx context.Context, w io.Writer, convID chat1.ConversationID, asset chat1.Asset,
+		ri func() chat1.RemoteInterface, signer s3.Signer, progress ProgressReporter) error
+	StreamAttachment(ctx context.Context, convID chat1.ConversationID, asset chat1.Asset,
+		ri func() chat1.RemoteInterface, signer s3.Signer) (io.ReadSeeker, error)
+	PutUploadedAsset(ctx context.Context, filename string, asset chat1.Asset) error
+	IsAssetLocal(ctx context.Context, asset chat1.Asset) (bool, error)
+	OnDbNuke(mctx libkb.MetaContext) error
+	OnStart(mctx libkb.MetaContext)
+}
+
+type AttachmentURLSrv interface {
+	GetURL(ctx context.Context, convID chat1.ConversationID, msgID chat1.MessageID,
+		preview, noAnim, isEmoji bool) string
+	GetPendingPreviewURL(ctx context.Context, outboxID chat1.OutboxID) string
+	GetUnfurlAssetURL(ctx context.Context, convID chat1.ConversationID, asset chat1.Asset) string
+	GetGiphyURL(ctx context.Context, giphyURL string) string
+	GetGiphyGalleryURL(ctx context.Context, convID chat1.ConversationID,
+		tlfName string, results []chat1.GiphySearchResult) string
+	GetAttachmentFetcher() AttachmentFetcher
+	OnDbNuke(mctx libkb.MetaContext) error
+}
+
+type RateLimitedResult interface {
+	GetRateLimit() []chat1.RateLimit
+	SetRateLimits(rl []chat1.RateLimit)
+}
+
+type EphemeralPurger interface {
+	Resumable
+
+	Queue(ctx context.Context, purgeInfo chat1.EphemeralPurgeInfo) error
+}
+
+type AttachmentUploaderResultCb interface {
+	Wait() chan AttachmentUploadResult
+}
+
+type AttachmentUploader interface {
+	Register(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		outboxID chat1.OutboxID, title, filename string, metadata []byte,
+		callerPreview *chat1.MakePreviewRes) (AttachmentUploaderResultCb, error)
+	Status(ctx context.Context, outboxID chat1.OutboxID) (AttachmentUploaderTaskStatus, AttachmentUploadResult, error)
+	Retry(ctx context.Context, outboxID chat1.OutboxID) (AttachmentUploaderResultCb, error)
+	Cancel(ctx context.Context, outboxID chat1.OutboxID) error
+	Complete(ctx context.Context, outboxID chat1.OutboxID)
+	GetUploadTempFile(ctx context.Context, outboxID chat1.OutboxID, filename string) (string, error)
+	GetUploadTempSink(ctx context.Context, filename string) (*os.File, chat1.OutboxID, error)
+	CancelUploadTempFile(ctx context.Context, outboxID chat1.OutboxID) error
+	OnDbNuke(mctx libkb.MetaContext) error
+}
+
+type NativeVideoHelper interface {
+	ThumbnailAndDuration(ctx context.Context, filename string) ([]byte, int, error)
+}
+
+type StellarLoader interface {
+	LoadPayment(ctx context.Context, convID chat1.ConversationID, msgID chat1.MessageID, senderUsername string, paymentID stellar1.PaymentID) *chat1.UIPaymentInfo
+	LoadRequest(ctx context.Context, convID chat1.ConversationID, msgID chat1.MessageID, senderUsername string, requestID stellar1.KeybaseRequestID) *chat1.UIRequestInfo
+}
+
+type StellarSender interface {
+	ParsePayments(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		body string, replyTo *chat1.MessageID) []ParsedStellarPayment
+	DescribePayments(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		payments []ParsedStellarPayment) (chat1.UIChatPaymentSummary, []ParsedStellarPayment, error)
+	DecorateWithPayments(ctx context.Context, body string, payments []chat1.TextPayment) string
+	SendPayments(ctx context.Context, convID chat1.ConversationID, payments []ParsedStellarPayment) ([]chat1.TextPayment, error)
+}
+
+type ConvConversationBackedStorage interface {
+	Put(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, name string, data interface{}) error
+	PutToKnownConv(ctx context.Context, uid gregor1.UID, conv chat1.ConversationLocal, data interface{}) error
+	Get(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, name string, res interface{},
+		createConvIfMissing bool) (bool, *chat1.ConversationLocal, error)
+	GetFromKnownConv(ctx context.Context, uid gregor1.UID, conv chat1.ConversationLocal, dest interface{}) (bool, error)
+}
+
+type UserConversationBackedStorage interface {
+	Put(ctx context.Context, uid gregor1.UID, name string, data interface{}) error
+	Get(ctx context.Context, uid gregor1.UID, name string, res interface{}) (bool, error)
+}
+
+type WhitelistExemption interface {
+	Use() bool
+	Matches(convID chat1.ConversationID, msgID chat1.MessageID, domain string) bool
+	Domain() string
+}
+
+type Unfurler interface {
+	UnfurlAndSend(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		msg chat1.MessageUnboxed)
+	Prefetch(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, msgText string) int
+	Status(ctx context.Context, outboxID chat1.OutboxID) (UnfurlerTaskStatus, *chat1.UnfurlResult, error)
+	Retry(ctx context.Context, outboxID chat1.OutboxID)
+	Complete(ctx context.Context, outboxID chat1.OutboxID)
+
+	GetSettings(ctx context.Context, uid gregor1.UID) (chat1.UnfurlSettings, error)
+	SetSettings(ctx context.Context, uid gregor1.UID, settings chat1.UnfurlSettings) error
+	WhitelistAdd(ctx context.Context, uid gregor1.UID, domain string) error
+	WhitelistRemove(ctx context.Context, uid gregor1.UID, domain string) error
+	WhitelistAddExemption(ctx context.Context, uid gregor1.UID, exemption WhitelistExemption)
+	SetMode(ctx context.Context, uid gregor1.UID, mode chat1.UnfurlMode) error
+}
+
+type ConversationCommand interface {
+	Match(ctx context.Context, text string) bool
+	Execute(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, tlfName, text string,
+		replyTo *chat1.MessageID) error
+	Preview(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, tflName, text string)
+	Name() string
+	Usage() string
+	Description() string
+	HasHelpText() bool
+	Export() chat1.ConversationCommand
+}
+
+type ConversationCommandsSpec interface {
+	GetMembersType() chat1.ConversationMembersType
+	GetTeamType() chat1.TeamType
+	GetTopicName() string
+}
+
+type ConversationCommandsSource interface {
+	ListCommands(ctx context.Context, uid gregor1.UID, conv ConversationCommandsSpec) (chat1.ConversationCommandGroups, error)
+	GetBuiltins(ctx context.Context) []chat1.BuiltinCommandGroup
+	GetBuiltinCommandType(ctx context.Context, c ConversationCommandsSpec) chat1.ConversationBuiltinCommandTyp
+	AttemptBuiltinCommand(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		tlfName string, body chat1.MessageBody, replyTo *chat1.MessageID) (bool, error)
+	PreviewBuiltinCommand(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		tlfName, text string)
+}
+
+type CoinFlipManager interface {
+	Resumable
+	StartFlip(ctx context.Context, uid gregor1.UID, hostConvID chat1.ConversationID, tlfName, text string,
+		outboxID *chat1.OutboxID) error
+	MaybeInjectFlipMessage(ctx context.Context, boxedMsg chat1.MessageBoxed, inboxVers chat1.InboxVers,
+		uid gregor1.UID, convID chat1.ConversationID, topicType chat1.TopicType) bool
+	LoadFlip(ctx context.Context, uid gregor1.UID, hostConvID chat1.ConversationID, hostMsgID chat1.MessageID,
+		flipConvID chat1.ConversationID, gameID chat1.FlipGameID) (chan chat1.UICoinFlipStatus, chan error)
+	DescribeFlipText(ctx context.Context, text string) string
+	HasActiveGames(ctx context.Context) bool
+	IsFlipConversationCreated(ctx context.Context, outboxID chat1.OutboxID) (chat1.ConversationID, FlipSendStatus)
+}
+
+type TeamMentionLoader interface {
+	Resumable
+	LoadTeamMention(ctx context.Context, uid gregor1.UID,
+		maybeMention chat1.MaybeMention, knownTeamMentions []chat1.KnownTeamMention,
+		forceRemote bool) error
+	IsTeamMention(ctx context.Context, uid gregor1.UID,
+		maybeMention chat1.MaybeMention, knownTeamMentions []chat1.KnownTeamMention) bool
+}
+
+type ExternalAPIKeySource interface {
+	GetKey(ctx context.Context, typ chat1.ExternalAPIKeyTyp) (chat1.ExternalAPIKey, error)
+	GetAllKeys(ctx context.Context) ([]chat1.ExternalAPIKey, error)
+}
+
+type LiveLocationKey string
+
+type LiveLocationTracker interface {
+	Resumable
+	GetCurrentPosition(ctx context.Context, convID chat1.ConversationID, msgID chat1.MessageID)
+	StartTracking(ctx context.Context, convID chat1.ConversationID, msgID chat1.MessageID, endTime time.Time)
+	LocationUpdate(ctx context.Context, coord chat1.Coordinate)
+	GetCoordinates(ctx context.Context, key LiveLocationKey) []chat1.Coordinate
+	GetEndTime(ctx context.Context, key LiveLocationKey) *time.Time
+	ActivelyTracking(ctx context.Context) bool
+	StopAllTracking(ctx context.Context)
+}
+
+type BotCommandManager interface {
+	Resumable
+	Advertise(ctx context.Context, alias *string, ads []chat1.AdvertiseCommandsParam) error
+	Clear(ctx context.Context, filter *chat1.ClearBotCommandsFilter) error
+	PublicCommandsConv(ctx context.Context, username string) (*chat1.ConversationID, error)
+	ListCommands(ctx context.Context, convID chat1.ConversationID) ([]chat1.UserBotCommandOutput, map[string]string, error)
+	UpdateCommands(ctx context.Context, convID chat1.ConversationID, info *chat1.BotInfo) (chan error, error)
+}
+
+type SupersedesTransform interface {
+	Run(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+		originalMsgs []chat1.MessageUnboxed, maxDeletedUpTo *chat1.MessageID) ([]chat1.MessageUnboxed, error)
+}
+
+type ReplyFiller interface {
+	Fill(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		msgs []chat1.MessageUnboxed) ([]chat1.MessageUnboxed, error)
+}
+
+type UIInboxLoader interface {
+	Resumable
+	UpdateLayout(ctx context.Context, reselectMode chat1.InboxLayoutReselectMode, reason string)
+	UpdateLayoutFromNewMessage(ctx context.Context, conv RemoteConversation)
+	UpdateLayoutFromSubteamRename(ctx context.Context, convs []RemoteConversation)
+	UpdateLayoutFromSmallIncrease(ctx context.Context)
+	UpdateLayoutFromSmallReset(ctx context.Context)
+	UpdateConvs(ctx context.Context, convIDs []chat1.ConversationID) error
+	LoadNonblock(ctx context.Context, query *chat1.GetInboxLocalQuery, maxUnbox *int, skipUnverified bool) error
+}
+
+type UIThreadLoader interface {
+	Offlinable
+	LoadNonblock(ctx context.Context, chatUI libkb.ChatUI, uid gregor1.UID,
+		convID chat1.ConversationID, reason chat1.GetThreadReason, pgmode chat1.GetThreadNonblockPgMode,
+		cbmode chat1.GetThreadNonblockCbMode, knownRemotes []string, query *chat1.GetThreadQuery, uipagination *chat1.UIPagination) error
+	Load(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		reason chat1.GetThreadReason, knownRemotes []string, query *chat1.GetThreadQuery,
+		pagination *chat1.Pagination) (chat1.ThreadView, error)
+}
+
+type JourneyCardManager interface {
+	Resumable
+	PickCard(context.Context, gregor1.UID, chat1.ConversationID, *chat1.ConversationLocal, *chat1.ThreadView) (*chat1.MessageUnboxedJourneycard, error)
+	SentMessage(context.Context, gregor1.UID, keybase1.TeamID, chat1.ConversationID) // Tell JourneyCardManager that the user has sent a message.
+	Dismiss(context.Context, gregor1.UID, keybase1.TeamID, chat1.ConversationID, chat1.JourneycardType)
+	OnDbNuke(libkb.MetaContext) error
+}
+
+type ParticipantSource interface {
+	Get(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		dataSource InboxSourceDataSourceTyp) ([]gregor1.UID, error)
+	GetNonblock(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		dataSource InboxSourceDataSourceTyp) chan ParticipantResult
+	GetWithNotifyNonblock(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		dataSource InboxSourceDataSourceTyp)
+	GetParticipantsFromUids(ctx context.Context, uids []gregor1.UID) ([]chat1.ConversationLocalParticipant, error)
+}
+
+type EmojiSource interface {
+	Add(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, alias, filename string, allowOverwrite bool) (chat1.EmojiRemoteSource, error)
+	AddAlias(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID,
+		newAlias, existingAlias string) (chat1.EmojiRemoteSource, error)
+	Remove(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID, alias string) error
+	Get(ctx context.Context, uid gregor1.UID, convID *chat1.ConversationID, opts chat1.EmojiFetchOpts) (chat1.UserEmojis, error)
+	Decorate(ctx context.Context, body string, uid gregor1.UID, messageType chat1.MessageType,
+		emojis []chat1.HarvestedEmoji) string
+	Harvest(ctx context.Context, body string, uid gregor1.UID, convID chat1.ConversationID,
+		mode EmojiHarvestMode) ([]chat1.HarvestedEmoji, error)
+	IsStockEmoji(alias string) bool
+	RemoteToLocalSource(ctx context.Context, uid gregor1.UID, remote chat1.EmojiRemoteSource) (chat1.EmojiLoadSource, chat1.EmojiLoadSource, error)
+	ToggleAnimations(ctx context.Context, uid gregor1.UID, enabled bool) error
+	IsValidSize(size int64) bool
+}
+
+type EphemeralTracker interface {
+	Resumable
+	GetAllPurgeInfo(ctx context.Context, uid gregor1.UID) ([]chat1.EphemeralPurgeInfo, error)
+	GetPurgeInfo(ctx context.Context, uid gregor1.UID, convID chat1.ConversationID) (chat1.EphemeralPurgeInfo, error)
+	InactivatePurgeInfo(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID) error
+	SetPurgeInfo(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, purgeInfo *chat1.EphemeralPurgeInfo) error
+	MaybeUpdatePurgeInfo(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID, purgeInfo *chat1.EphemeralPurgeInfo) error
+	Clear(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID) error
+	OnLogout(libkb.MetaContext) error
+	OnDbNuke(libkb.MetaContext) error
+}
+
+type PauseArchiveFn = func()
+type ChatArchiveRegistry interface {
+	Resumable
+
+	// List all known jobs
+	List(ctx context.Context) (res chat1.ArchiveChatListRes, err error)
+	// Get a job for a specific ID
+	Get(ctx context.Context, jobID chat1.ArchiveJobID) (res chat1.ArchiveChatJob, err error)
+	// Delete a jobs metadata, cancels it if it is currently running
+	Delete(ctx context.Context, jobID chat1.ArchiveJobID, deleteOutputPath bool) (err error)
+	// Sets (possibly updating) the job to the given state.
+	// cancel stops a running job by cancelling it's context and returns it's current state
+	Set(ctx context.Context, cancel PauseArchiveFn, job chat1.ArchiveChatJob) (err error)
+	// Stop a running job
+	Pause(ctx context.Context, jobID chat1.ArchiveJobID) (err error)
+	// Resume a paused job
+	Resume(ctx context.Context, jobID chat1.ArchiveJobID) (err error)
+	OnDbNuke(libkb.MetaContext) error
+}
+
+type ServerConnection interface {
+	Reconnect(context.Context) (bool, error)
+	GetClient() chat1.RemoteInterface
+}
+
+type InternalError interface {
+	// verbose error info for debugging but not user display
+	InternalError() string
+}
+
+type UnboxingError interface {
+	InternalError
+	Error() string
+	Inner() error
+	IsPermanent() bool
+	ExportType() chat1.MessageUnboxedErrorType
+	VersionKind() chat1.VersionKind
+	VersionNumber() int
+	IsCritical() bool
+	ToStatus() keybase1.Status
+}
+
+var _ error = (UnboxingError)(nil)
