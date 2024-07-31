@@ -1,0 +1,260 @@
+{
+  "protocol": "login",
+  "imports": [
+    {
+      "path": "common.avdl",
+      "type": "idl"
+    }
+  ],
+  "types": [
+    {
+      "type": "record",
+      "name": "ConfiguredAccount",
+      "fields": [
+        {
+          "type": "string",
+          "name": "username"
+        },
+        {
+          "type": "FullName",
+          "name": "fullname"
+        },
+        {
+          "type": "boolean",
+          "name": "hasStoredSecret"
+        },
+        {
+          "type": "boolean",
+          "name": "isCurrent"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "getConfiguredAccounts": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": {
+        "type": "array",
+        "items": "ConfiguredAccount"
+      },
+      "doc": "Returns an array of information about accounts configured on the local\n    machine. Currently configured accounts are defined as those that have stored\n    secrets, but this definition may be expanded in the future."
+    },
+    "login": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "deviceType",
+          "type": "DeviceTypeV2"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        },
+        {
+          "name": "clientType",
+          "type": "ClientType"
+        },
+        {
+          "name": "doUserSwitch",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "paperKey",
+          "type": "string"
+        },
+        {
+          "name": "deviceName",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "Performs login.  deviceType should be keybase1.DeviceTypeV2_DESKTOP\n    or keybase1.DeviceTypeV2_MOBILE. username is optional. If the current\n    device isn't provisioned, this function will provision it."
+    },
+    "loginProvisionedDevice": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        },
+        {
+          "name": "noPassphrasePrompt",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Login a user only if the user is on a provisioned device. Username is optional.\n    If noPassphrasePrompt is set, then only a stored secret will be used to unlock\n    the device keys."
+    },
+    "loginWithPaperKey": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "Login and unlock by\n  - trying unlocked device keys if available\n  - prompting for a paper key and using that"
+    },
+    "logout": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "force",
+          "type": "boolean"
+        },
+        {
+          "name": "keepSecrets",
+          "type": "boolean"
+        }
+      ],
+      "response": null
+    },
+    "deprovision": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        },
+        {
+          "name": "doRevoke",
+          "type": "boolean"
+        }
+      ],
+      "response": null
+    },
+    "recoverAccountFromEmailAddress": {
+      "request": [
+        {
+          "name": "email",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "recoverPassphrase": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "Guide the user through possibilities of changing their passphrase.\n    Lets them change their passphrase using a paper key or enter the reset pipeline."
+    },
+    "paperKey": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": null,
+      "doc": "PaperKey generates paper backup keys for restoring an account.\n    It calls login_ui.displayPaperKeyPhrase with the phrase."
+    },
+    "paperKeySubmit": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "paperPhrase",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "paperKeySubmit checks that paperPhrase is a valid paper key\n    for the logged in user, caches the keys, and sends a notification."
+    },
+    "unlock": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": null,
+      "doc": "Unlock restores access to local key store by priming passphrase stream cache."
+    },
+    "unlockWithPassphrase": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "passphrase",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "accountDelete": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "passphrase",
+          "type": [
+            null,
+            "string"
+          ]
+        }
+      ],
+      "response": null,
+      "doc": "accountDelete deletes the current user's account."
+    },
+    "loginOneshot": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        },
+        {
+          "name": "paperKey",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "loginOneshot allows a service to have a \"onetime login\", without\n   provisioning a device. It bootstraps credentials with the given\n   paperkey"
+    },
+    "isOnline": {
+      "request": [],
+      "response": "bool",
+      "doc": "isOnline returns whether the device is able to open a connection to keybase.io.\n   Used for determining whether to offer proxy settings on the login screen."
+    }
+  },
+  "namespace": "keybase.1"
+}
