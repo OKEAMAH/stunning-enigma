@@ -1,0 +1,211 @@
+{
+  "protocol": "proveUi",
+  "imports": [
+    {
+      "path": "common.avdl",
+      "type": "idl"
+    }
+  ],
+  "types": [
+    {
+      "type": "enum",
+      "name": "PromptOverwriteType",
+      "symbols": [
+        "SOCIAL_0",
+        "SITE_1"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "ProveParameters",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "SizedImage"
+          },
+          "name": "logoFull"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "SizedImage"
+          },
+          "name": "logoBlack"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "SizedImage"
+          },
+          "name": "logoWhite"
+        },
+        {
+          "type": "string",
+          "name": "title"
+        },
+        {
+          "type": "string",
+          "name": "subtext"
+        },
+        {
+          "type": "string",
+          "name": "suffix"
+        },
+        {
+          "type": "string",
+          "name": "buttonLabel"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "promptOverwrite": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "account",
+          "type": "string"
+        },
+        {
+          "name": "typ",
+          "type": "PromptOverwriteType"
+        }
+      ],
+      "response": "boolean"
+    },
+    "promptUsername": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "prevError",
+          "type": [
+            null,
+            "Status"
+          ]
+        },
+        {
+          "name": "parameters",
+          "type": [
+            null,
+            "ProveParameters"
+          ]
+        }
+      ],
+      "response": "string"
+    },
+    "outputPrechecks": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        }
+      ],
+      "response": null
+    },
+    "preProofWarning": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        }
+      ],
+      "response": "boolean"
+    },
+    "outputInstructions": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "instructions",
+          "type": "Text"
+        },
+        {
+          "name": "proof",
+          "type": "string"
+        },
+        {
+          "name": "parameters",
+          "type": [
+            null,
+            "ProveParameters"
+          ]
+        }
+      ],
+      "response": null
+    },
+    "okToCheck": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "attempt",
+          "type": "int"
+        }
+      ],
+      "response": "boolean"
+    },
+    "checking": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "continueChecking": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": "boolean"
+    },
+    "displayRecheckWarning": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        }
+      ],
+      "response": null
+    }
+  },
+  "namespace": "keybase.1"
+}

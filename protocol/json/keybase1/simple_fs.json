@@ -1,0 +1,2282 @@
+{
+  "protocol": "SimpleFS",
+  "imports": [
+    {
+      "path": "common.avdl",
+      "type": "idl"
+    },
+    {
+      "path": "kbfs_common.avdl",
+      "type": "idl"
+    }
+  ],
+  "types": [
+    {
+      "type": "fixed",
+      "name": "OpID",
+      "size": "16"
+    },
+    {
+      "type": "record",
+      "name": "KBFSRevision",
+      "fields": [],
+      "typedef": "int64",
+      "lint": "ignore"
+    },
+    {
+      "type": "enum",
+      "name": "KBFSArchivedType",
+      "symbols": [
+        "REVISION_0",
+        "TIME_1",
+        "TIME_STRING_2",
+        "REL_TIME_STRING_3"
+      ]
+    },
+    {
+      "type": "variant",
+      "name": "KBFSArchivedParam",
+      "switch": {
+        "type": "KBFSArchivedType",
+        "name": "KBFSArchivedType"
+      },
+      "cases": [
+        {
+          "label": {
+            "name": "REVISION",
+            "def": false
+          },
+          "body": "KBFSRevision"
+        },
+        {
+          "label": {
+            "name": "TIME",
+            "def": false
+          },
+          "body": "Time"
+        },
+        {
+          "label": {
+            "name": "TIME_STRING",
+            "def": false
+          },
+          "body": "string"
+        },
+        {
+          "label": {
+            "name": "REL_TIME_STRING",
+            "def": false
+          },
+          "body": "string"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "KBFSArchivedPath",
+      "fields": [
+        {
+          "type": "string",
+          "name": "path"
+        },
+        {
+          "type": "KBFSArchivedParam",
+          "name": "archivedParam"
+        },
+        {
+          "type": [
+            null,
+            "TLFIdentifyBehavior"
+          ],
+          "name": "identifyBehavior"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "KBFSPath",
+      "fields": [
+        {
+          "type": "string",
+          "name": "path"
+        },
+        {
+          "type": [
+            null,
+            "TLFIdentifyBehavior"
+          ],
+          "name": "identifyBehavior"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "PathType",
+      "symbols": [
+        "LOCAL_0",
+        "KBFS_1",
+        "KBFS_ARCHIVED_2"
+      ]
+    },
+    {
+      "type": "variant",
+      "name": "Path",
+      "switch": {
+        "type": "PathType",
+        "name": "PathType"
+      },
+      "cases": [
+        {
+          "label": {
+            "name": "LOCAL",
+            "def": false
+          },
+          "body": "string"
+        },
+        {
+          "label": {
+            "name": "KBFS",
+            "def": false
+          },
+          "body": "KBFSPath"
+        },
+        {
+          "label": {
+            "name": "KBFS_ARCHIVED",
+            "def": false
+          },
+          "body": "KBFSArchivedPath"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "DirentType",
+      "symbols": [
+        "FILE_0",
+        "DIR_1",
+        "SYM_2",
+        "EXEC_3"
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "PrefetchStatus",
+      "symbols": [
+        "NOT_STARTED_0",
+        "IN_PROGRESS_1",
+        "COMPLETE_2"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "PrefetchProgress",
+      "fields": [
+        {
+          "type": "Time",
+          "name": "start"
+        },
+        {
+          "type": "Time",
+          "name": "endEstimate"
+        },
+        {
+          "type": "int64",
+          "name": "bytesTotal"
+        },
+        {
+          "type": "int64",
+          "name": "bytesFetched"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "Dirent",
+      "fields": [
+        {
+          "type": "Time",
+          "name": "time"
+        },
+        {
+          "type": "int",
+          "name": "size"
+        },
+        {
+          "type": "string",
+          "name": "name"
+        },
+        {
+          "type": "DirentType",
+          "name": "direntType"
+        },
+        {
+          "type": "User",
+          "name": "lastWriterUnverified"
+        },
+        {
+          "type": "boolean",
+          "name": "writable"
+        },
+        {
+          "type": "PrefetchStatus",
+          "name": "prefetchStatus"
+        },
+        {
+          "type": "PrefetchProgress",
+          "name": "prefetchProgress"
+        },
+        {
+          "type": "string",
+          "name": "symlinkTarget"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "DirentWithRevision",
+      "fields": [
+        {
+          "type": "Dirent",
+          "name": "entry"
+        },
+        {
+          "type": "KBFSRevision",
+          "name": "revision"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "RevisionSpanType",
+      "symbols": [
+        "DEFAULT_0",
+        "LAST_FIVE_1"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "ErrorNum",
+      "fields": [],
+      "typedef": "int"
+    },
+    {
+      "type": "enum",
+      "name": "OpenFlags",
+      "symbols": [
+        "READ_0",
+        "REPLACE_1",
+        "EXISTING_2",
+        "WRITE_4",
+        "APPEND_8",
+        "DIRECTORY_16"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "Progress",
+      "fields": [],
+      "typedef": "int"
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSListResult",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "Dirent"
+          },
+          "name": "entries"
+        },
+        {
+          "type": "Progress",
+          "name": "progress"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FileContent",
+      "fields": [
+        {
+          "type": "bytes",
+          "name": "data"
+        },
+        {
+          "type": "Progress",
+          "name": "progress"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "AsyncOps",
+      "symbols": [
+        "LIST_0",
+        "LIST_RECURSIVE_1",
+        "READ_2",
+        "WRITE_3",
+        "COPY_4",
+        "MOVE_5",
+        "REMOVE_6",
+        "LIST_RECURSIVE_TO_DEPTH_7",
+        "GET_REVISIONS_8"
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "ListFilter",
+      "symbols": [
+        "NO_FILTER_0",
+        "FILTER_ALL_HIDDEN_1",
+        "FILTER_SYSTEM_HIDDEN_2"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "ListArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "path"
+        },
+        {
+          "type": "ListFilter",
+          "name": "filter"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "ListToDepthArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "path"
+        },
+        {
+          "type": "ListFilter",
+          "name": "filter"
+        },
+        {
+          "type": "int",
+          "name": "depth"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "RemoveArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "path"
+        },
+        {
+          "type": "boolean",
+          "name": "recursive"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "ReadArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "path"
+        },
+        {
+          "type": "long",
+          "name": "offset"
+        },
+        {
+          "type": "int",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "WriteArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "path"
+        },
+        {
+          "type": "long",
+          "name": "offset"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "CopyArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "src"
+        },
+        {
+          "type": "Path",
+          "name": "dest"
+        },
+        {
+          "type": "boolean",
+          "name": "overwriteExistingFiles"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "MoveArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "src"
+        },
+        {
+          "type": "Path",
+          "name": "dest"
+        },
+        {
+          "type": "boolean",
+          "name": "overwriteExistingFiles"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "GetRevisionsArgs",
+      "fields": [
+        {
+          "type": "OpID",
+          "name": "opID"
+        },
+        {
+          "type": "Path",
+          "name": "path"
+        },
+        {
+          "type": "RevisionSpanType",
+          "name": "spanType"
+        }
+      ]
+    },
+    {
+      "type": "variant",
+      "name": "OpDescription",
+      "switch": {
+        "type": "AsyncOps",
+        "name": "asyncOp"
+      },
+      "cases": [
+        {
+          "label": {
+            "name": "LIST",
+            "def": false
+          },
+          "body": "ListArgs"
+        },
+        {
+          "label": {
+            "name": "LIST_RECURSIVE",
+            "def": false
+          },
+          "body": "ListArgs"
+        },
+        {
+          "label": {
+            "name": "LIST_RECURSIVE_TO_DEPTH",
+            "def": false
+          },
+          "body": "ListToDepthArgs"
+        },
+        {
+          "label": {
+            "name": "READ",
+            "def": false
+          },
+          "body": "ReadArgs"
+        },
+        {
+          "label": {
+            "name": "WRITE",
+            "def": false
+          },
+          "body": "WriteArgs"
+        },
+        {
+          "label": {
+            "name": "COPY",
+            "def": false
+          },
+          "body": "CopyArgs"
+        },
+        {
+          "label": {
+            "name": "MOVE",
+            "def": false
+          },
+          "body": "MoveArgs"
+        },
+        {
+          "label": {
+            "name": "REMOVE",
+            "def": false
+          },
+          "body": "RemoveArgs"
+        },
+        {
+          "label": {
+            "name": "GET_REVISIONS",
+            "def": false
+          },
+          "body": "GetRevisionsArgs"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "GetRevisionsResult",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "DirentWithRevision"
+          },
+          "name": "revisions"
+        },
+        {
+          "type": "Progress",
+          "name": "progress"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "OpProgress",
+      "fields": [
+        {
+          "type": "Time",
+          "name": "start"
+        },
+        {
+          "type": "Time",
+          "name": "endEstimate"
+        },
+        {
+          "type": "AsyncOps",
+          "name": "opType"
+        },
+        {
+          "type": "int64",
+          "name": "bytesTotal"
+        },
+        {
+          "type": "int64",
+          "name": "bytesRead"
+        },
+        {
+          "type": "int64",
+          "name": "bytesWritten"
+        },
+        {
+          "type": "int64",
+          "name": "filesTotal"
+        },
+        {
+          "type": "int64",
+          "name": "filesRead"
+        },
+        {
+          "type": "int64",
+          "name": "filesWritten"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSQuotaUsage",
+      "fields": [
+        {
+          "type": "int64",
+          "name": "usageBytes"
+        },
+        {
+          "type": "int64",
+          "name": "archiveBytes"
+        },
+        {
+          "type": "int64",
+          "name": "limitBytes"
+        },
+        {
+          "type": "int64",
+          "name": "gitUsageBytes"
+        },
+        {
+          "type": "int64",
+          "name": "gitArchiveBytes"
+        },
+        {
+          "type": "int64",
+          "name": "gitLimitBytes"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "FolderSyncMode",
+      "symbols": [
+        "DISABLED_0",
+        "ENABLED_1",
+        "PARTIAL_2"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FolderSyncConfig",
+      "fields": [
+        {
+          "type": "FolderSyncMode",
+          "name": "mode"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "paths"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FolderSyncConfigAndStatus",
+      "fields": [
+        {
+          "type": "FolderSyncConfig",
+          "name": "config"
+        },
+        {
+          "type": "FolderSyncStatus",
+          "name": "status"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FolderSyncConfigAndStatusWithFolder",
+      "fields": [
+        {
+          "type": "Folder",
+          "name": "folder"
+        },
+        {
+          "type": "FolderSyncConfig",
+          "name": "config"
+        },
+        {
+          "type": "FolderSyncStatus",
+          "name": "status"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SyncConfigAndStatusRes",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "FolderSyncConfigAndStatusWithFolder"
+          },
+          "name": "folders"
+        },
+        {
+          "type": "FolderSyncStatus",
+          "name": "overallStatus"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FolderWithFavFlags",
+      "fields": [
+        {
+          "type": "Folder",
+          "name": "folder"
+        },
+        {
+          "type": "boolean",
+          "name": "isFavorite"
+        },
+        {
+          "type": "boolean",
+          "name": "isIgnored"
+        },
+        {
+          "type": "boolean",
+          "name": "isNew"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "KbfsOnlineStatus",
+      "symbols": [
+        "OFFLINE_0",
+        "TRYING_1",
+        "ONLINE_2"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FSSettings",
+      "fields": [
+        {
+          "type": "int64",
+          "name": "spaceAvailableNotificationThreshold"
+        },
+        {
+          "type": "boolean",
+          "name": "sfmiBannerDismissed",
+          "lint": "ignore"
+        },
+        {
+          "type": "boolean",
+          "name": "syncOnCellular"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSStats",
+      "fields": [
+        {
+          "type": "ProcessRuntimeStats",
+          "name": "processStats"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "blockCacheDbStats"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "syncCacheDbStats"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "DbStats"
+          },
+          "name": "runtimeDbStats"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "SubscriptionTopic",
+      "symbols": [
+        "FAVORITES_0",
+        "JOURNAL_STATUS_1",
+        "ONLINE_STATUS_2",
+        "DOWNLOAD_STATUS_3",
+        "FILES_TAB_BADGE_4",
+        "OVERALL_SYNC_STATUS_5",
+        "SETTINGS_6",
+        "UPLOAD_STATUS_7"
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "PathSubscriptionTopic",
+      "symbols": [
+        "CHILDREN_0",
+        "STAT_1"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "DownloadInfo",
+      "fields": [
+        {
+          "type": "string",
+          "name": "downloadID"
+        },
+        {
+          "type": "KBFSPath",
+          "name": "path"
+        },
+        {
+          "type": "string",
+          "name": "filename"
+        },
+        {
+          "type": "Time",
+          "name": "startTime"
+        },
+        {
+          "type": "boolean",
+          "name": "isRegularDownload"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "DownloadState",
+      "fields": [
+        {
+          "type": "string",
+          "name": "downloadID"
+        },
+        {
+          "type": "double",
+          "name": "progress"
+        },
+        {
+          "type": "Time",
+          "name": "endEstimate"
+        },
+        {
+          "type": "string",
+          "name": "localPath"
+        },
+        {
+          "type": "string",
+          "name": "error"
+        },
+        {
+          "type": "boolean",
+          "name": "done"
+        },
+        {
+          "type": "boolean",
+          "name": "canceled"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "DownloadStatus",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "regularDownloadIDs"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "DownloadState"
+          },
+          "name": "states"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "UploadState",
+      "fields": [
+        {
+          "type": "string",
+          "name": "uploadID"
+        },
+        {
+          "type": "KBFSPath",
+          "name": "targetPath"
+        },
+        {
+          "type": [
+            null,
+            "string"
+          ],
+          "name": "error"
+        },
+        {
+          "type": "boolean",
+          "name": "canceled"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "FilesTabBadge",
+      "symbols": [
+        "NONE_0",
+        "UPLOADING_STUCK_1",
+        "AWAITING_UPLOAD_2",
+        "UPLOADING_3"
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "GUIViewType",
+      "symbols": [
+        "DEFAULT_0",
+        "TEXT_1",
+        "IMAGE_2",
+        "AUDIO_3",
+        "VIDEO_4",
+        "PDF_5"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "GUIFileContext",
+      "fields": [
+        {
+          "type": "GUIViewType",
+          "name": "viewType"
+        },
+        {
+          "type": "string",
+          "name": "contentType"
+        },
+        {
+          "type": "string",
+          "name": "url"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSSearchHit",
+      "fields": [
+        {
+          "type": "string",
+          "name": "path"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSSearchResults",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "SimpleFSSearchHit"
+          },
+          "name": "hits"
+        },
+        {
+          "type": "int",
+          "name": "nextResult"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "IndexProgressRecord",
+      "fields": [
+        {
+          "type": "Time",
+          "name": "endEstimate"
+        },
+        {
+          "type": "int64",
+          "name": "bytesTotal"
+        },
+        {
+          "type": "int64",
+          "name": "bytesSoFar"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSIndexProgress",
+      "fields": [
+        {
+          "type": "IndexProgressRecord",
+          "name": "overallProgress"
+        },
+        {
+          "type": "Folder",
+          "name": "currFolder"
+        },
+        {
+          "type": "IndexProgressRecord",
+          "name": "currProgress"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "Folder"
+          },
+          "name": "foldersLeft"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "ArchiveJobStartPathType",
+      "symbols": [
+        "KBFS_0",
+        "GIT_1"
+      ]
+    },
+    {
+      "type": "variant",
+      "name": "ArchiveJobStartPath",
+      "switch": {
+        "type": "ArchiveJobStartPathType",
+        "name": "archiveJobStartPathType"
+      },
+      "cases": [
+        {
+          "label": {
+            "name": "KBFS",
+            "def": false
+          },
+          "body": "KBFSPath"
+        },
+        {
+          "label": {
+            "name": "GIT",
+            "def": false
+          },
+          "body": "string"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveJobDesc",
+      "fields": [
+        {
+          "type": "string",
+          "name": "jobID"
+        },
+        {
+          "type": "KBFSArchivedPath",
+          "name": "kbfsPathWithRevision"
+        },
+        {
+          "type": [
+            null,
+            "string"
+          ],
+          "name": "gitRepo"
+        },
+        {
+          "type": "boolean",
+          "name": "overwriteZip"
+        },
+        {
+          "type": "Time",
+          "name": "startTime"
+        },
+        {
+          "type": "string",
+          "name": "stagingPath"
+        },
+        {
+          "type": "string",
+          "name": "targetName"
+        },
+        {
+          "type": "string",
+          "name": "zipFilePath"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "SimpleFSFileArchiveState",
+      "symbols": [
+        "ToDo_0",
+        "InProgress_1",
+        "Complete_2",
+        "Skipped_3"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveFile",
+      "fields": [
+        {
+          "type": "SimpleFSFileArchiveState",
+          "name": "state"
+        },
+        {
+          "type": "DirentType",
+          "name": "direntType"
+        },
+        {
+          "type": "string",
+          "name": "sha256SumHex"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveJobState",
+      "fields": [
+        {
+          "type": "SimpleFSArchiveJobDesc",
+          "name": "desc"
+        },
+        {
+          "type": {
+            "type": "map",
+            "values": "SimpleFSArchiveFile",
+            "keys": "string"
+          },
+          "name": "manifest"
+        },
+        {
+          "type": "SimpleFSArchiveJobPhase",
+          "name": "phase"
+        },
+        {
+          "type": "int64",
+          "name": "bytesTotal"
+        },
+        {
+          "type": "int64",
+          "name": "bytesCopied"
+        },
+        {
+          "type": "int64",
+          "name": "bytesZipped"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "SimpleFSArchiveJobPhase",
+      "symbols": [
+        "Queued_0",
+        "Indexing_1",
+        "Indexed_2",
+        "Copying_3",
+        "Copied_4",
+        "Zipping_5",
+        "Done_6"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveState",
+      "fields": [
+        {
+          "type": {
+            "type": "map",
+            "values": "SimpleFSArchiveJobState",
+            "keys": "string"
+          },
+          "name": "jobs"
+        },
+        {
+          "type": "Time",
+          "name": "lastUpdated"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveJobErrorState",
+      "fields": [
+        {
+          "type": "string",
+          "name": "error"
+        },
+        {
+          "type": "Time",
+          "name": "nextRetry"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveJobStatus",
+      "fields": [
+        {
+          "type": "SimpleFSArchiveJobDesc",
+          "name": "desc"
+        },
+        {
+          "type": "SimpleFSArchiveJobPhase",
+          "name": "phase"
+        },
+        {
+          "type": "int",
+          "name": "todoCount"
+        },
+        {
+          "type": "int",
+          "name": "inProgressCount"
+        },
+        {
+          "type": "int",
+          "name": "completeCount"
+        },
+        {
+          "type": "int",
+          "name": "skippedCount"
+        },
+        {
+          "type": "int",
+          "name": "totalCount"
+        },
+        {
+          "type": "int64",
+          "name": "bytesTotal"
+        },
+        {
+          "type": "int64",
+          "name": "bytesCopied"
+        },
+        {
+          "type": "int64",
+          "name": "bytesZipped"
+        },
+        {
+          "type": [
+            null,
+            "SimpleFSArchiveJobErrorState"
+          ],
+          "name": "error"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveStatus",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "SimpleFSArchiveJobStatus"
+          },
+          "name": "jobs"
+        },
+        {
+          "type": "Time",
+          "name": "lastUpdated"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveJobFreshness",
+      "fields": [
+        {
+          "type": "KBFSRevision",
+          "name": "currentTLFRevision"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveCheckArchiveResult",
+      "fields": [
+        {
+          "type": "SimpleFSArchiveJobDesc",
+          "name": "desc"
+        },
+        {
+          "type": "KBFSRevision",
+          "name": "currentTLFRevision"
+        },
+        {
+          "type": {
+            "type": "map",
+            "values": "string",
+            "keys": "string"
+          },
+          "name": "pathsWithIssues"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveAllFilesResult",
+      "fields": [
+        {
+          "type": {
+            "type": "map",
+            "values": "SimpleFSArchiveJobDesc",
+            "keys": "string"
+          },
+          "name": "tlfPathToJobDesc"
+        },
+        {
+          "type": {
+            "type": "map",
+            "values": "string",
+            "keys": "string"
+          },
+          "name": "tlfPathToError"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "skippedTLFPaths"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SimpleFSArchiveAllGitReposResult",
+      "fields": [
+        {
+          "type": {
+            "type": "map",
+            "values": "SimpleFSArchiveJobDesc",
+            "keys": "string"
+          },
+          "name": "gitRepoToJobDesc"
+        },
+        {
+          "type": {
+            "type": "map",
+            "values": "string",
+            "keys": "string"
+          },
+          "name": "gitRepoToError"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "simpleFSList": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "filter",
+          "type": "ListFilter"
+        },
+        {
+          "name": "refreshSubscription",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Begin list of items in directory at path.\n   Retrieve results with readList().\n   Can be a single file to get flags/status.\n   If `refreshSubscription` is true and the path is a KBFS path, simpleFS\n     will begin sending `FSPathUpdated` notifications for the for the\n     corresponding TLF, until another call refreshes the subscription on a\n     different TLF."
+    },
+    "simpleFSListRecursive": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "filter",
+          "type": "ListFilter"
+        },
+        {
+          "name": "refreshSubscription",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Begin recursive list of items in directory at path.\n   If `refreshSubscription` is true and the path is a KBFS path, simpleFS\n     will begin sending `FSPathUpdated` notifications for the for the\n     corresponding TLF, until another call refreshes the subscription on a\n     different TLF."
+    },
+    "simpleFSListRecursiveToDepth": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "filter",
+          "type": "ListFilter"
+        },
+        {
+          "name": "refreshSubscription",
+          "type": "boolean"
+        },
+        {
+          "name": "depth",
+          "type": "int"
+        }
+      ],
+      "response": null,
+      "doc": "Begin recursive list of items in directory at path up to a given depth"
+    },
+    "simpleFSReadList": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        }
+      ],
+      "response": "SimpleFSListResult",
+      "doc": "Get list of Paths in progress. Can indicate status of pending\n   to get more entries."
+    },
+    "simpleFSCopy": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "src",
+          "type": "Path"
+        },
+        {
+          "name": "dest",
+          "type": "Path"
+        },
+        {
+          "name": "overwriteExistingFiles",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Begin copy of file or directory."
+    },
+    "simpleFSSymlink": {
+      "request": [
+        {
+          "name": "target",
+          "type": "string"
+        },
+        {
+          "name": "link",
+          "type": "Path"
+        }
+      ],
+      "response": null,
+      "doc": "Make a symlink of file or directory"
+    },
+    "simpleFSCopyRecursive": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "src",
+          "type": "Path"
+        },
+        {
+          "name": "dest",
+          "type": "Path"
+        },
+        {
+          "name": "overwriteExistingFiles",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Begin recursive copy of directory\n\n   overwriteExistingFiles controls whether an existing file from `src` will\n   overwrite a file with the same name in `dest`; if `false`, an error will be\n   returned in that case.  For directories that share a name, the copy will\n   continue recursively into the directory without causing an error."
+    },
+    "simpleFSMove": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "src",
+          "type": "Path"
+        },
+        {
+          "name": "dest",
+          "type": "Path"
+        },
+        {
+          "name": "overwriteExistingFiles",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Begin move of file or directory, from/to KBFS only"
+    },
+    "simpleFSRename": {
+      "request": [
+        {
+          "name": "src",
+          "type": "Path"
+        },
+        {
+          "name": "dest",
+          "type": "Path"
+        }
+      ],
+      "response": null,
+      "doc": "Rename file or directory, KBFS side only"
+    },
+    "simpleFSOpen": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "dest",
+          "type": "Path"
+        },
+        {
+          "name": "flags",
+          "type": "OpenFlags"
+        }
+      ],
+      "response": null,
+      "doc": "Create/open a file and leave it open\n   or create a directory\n   Files must be closed afterwards."
+    },
+    "simpleFSSetStat": {
+      "request": [
+        {
+          "name": "dest",
+          "type": "Path"
+        },
+        {
+          "name": "flag",
+          "type": "DirentType"
+        }
+      ],
+      "response": null,
+      "doc": "Set/clear file bits - only executable for now"
+    },
+    "simpleFSRead": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "offset",
+          "type": "long"
+        },
+        {
+          "name": "size",
+          "type": "int"
+        }
+      ],
+      "response": "FileContent",
+      "doc": "Read (possibly partial) contents of open file,\n   up to the amount specified by size.\n   Repeat until zero bytes are returned or error.\n   If size is zero, read an arbitrary amount."
+    },
+    "simpleFSWrite": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "offset",
+          "type": "long"
+        },
+        {
+          "name": "content",
+          "type": "bytes"
+        }
+      ],
+      "response": null,
+      "doc": "Append content to opened file.\n   May be repeated until OpID is closed."
+    },
+    "simpleFSRemove": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "recursive",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "doc": "Remove file or directory from filesystem"
+    },
+    "simpleFSStat": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "refreshSubscription",
+          "type": "boolean"
+        }
+      ],
+      "response": "Dirent",
+      "doc": "Get info about file"
+    },
+    "simpleFSGetRevisions": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        },
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "spanType",
+          "type": "RevisionSpanType"
+        }
+      ],
+      "response": null,
+      "doc": "Get revision info for a directory entry"
+    },
+    "simpleFSReadRevisions": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        }
+      ],
+      "response": "GetRevisionsResult",
+      "doc": "Get list of revisions in progress. Can indicate status of pending\n   to get more revisions."
+    },
+    "simpleFSMakeOpid": {
+      "request": [],
+      "response": "OpID",
+      "doc": "Convenience helper for generating new random value"
+    },
+    "simpleFSClose": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        }
+      ],
+      "response": null,
+      "doc": "Close OpID, cancels any pending operation.\n   Must be called after list/copy/remove"
+    },
+    "simpleFSCancel": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        }
+      ],
+      "response": null,
+      "doc": "Cancels a running operation, like copy."
+    },
+    "simpleFSCheck": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        }
+      ],
+      "response": "OpProgress",
+      "doc": "Check progress of pending operation"
+    },
+    "simpleFSGetOps": {
+      "request": [],
+      "response": {
+        "type": "array",
+        "items": "OpDescription"
+      },
+      "doc": "Get all the outstanding operations"
+    },
+    "simpleFSWait": {
+      "request": [
+        {
+          "name": "opID",
+          "type": "OpID"
+        }
+      ],
+      "response": null,
+      "doc": "Blocking wait for the pending operation to finish"
+    },
+    "simpleFSDumpDebuggingInfo": {
+      "request": [],
+      "response": null,
+      "doc": "Instructs KBFS to dump debugging info into its logs."
+    },
+    "simpleFSClearConflictState": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSFinishResolvingConflict": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSForceStuckConflict": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": null,
+      "doc": "Force a TLF into a stuck conflict state (for testing)."
+    },
+    "simpleFSSyncStatus": {
+      "request": [
+        {
+          "name": "filter",
+          "type": "ListFilter"
+        }
+      ],
+      "response": "FSSyncStatus",
+      "doc": "Get sync status."
+    },
+    "simpleFSUserEditHistory": {
+      "request": [],
+      "response": {
+        "type": "array",
+        "items": "FSFolderEditHistory"
+      },
+      "doc": "simpleFSUserEditHistory returns edit histories of TLFs that the logged-in\n   user can access.  Each returned history is corresponds to a unique\n   writer-TLF pair.  They are in descending order by the modification time\n   (as recorded by the server) of the most recent edit in each history."
+    },
+    "simpleFSFolderEditHistory": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": "FSFolderEditHistory",
+      "doc": "simpleFSFolderEditHistory returns the edit history for the TLF\n   described by `path`, for the most recent writers of that TLF.\n   The writers are in descending order by the modification time (as\n   recorded by the server) of their most recent edit."
+    },
+    "simpleFSListFavorites": {
+      "request": [],
+      "response": "FavoritesResult",
+      "doc": "simpleFSListFavorites gets the current favorites, ignored folders, and new\n   folders from the KBFS cache."
+    },
+    "simpleFSGetUserQuotaUsage": {
+      "request": [],
+      "response": "SimpleFSQuotaUsage",
+      "doc": "simpleFSGetUserQuotaUsage returns the quota usage for the logged-in\n   user.  Any usage includes local journal usage as well."
+    },
+    "simpleFSGetTeamQuotaUsage": {
+      "request": [
+        {
+          "name": "teamName",
+          "type": "TeamName"
+        }
+      ],
+      "response": "SimpleFSQuotaUsage",
+      "doc": "simpleFSGetTeamQuotaUsage returns the quota usage for the given team, if\n   the logged-in user has access to that team.  Any usage includes\n   local journal usage as well."
+    },
+    "simpleFSReset": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "tlfID",
+          "type": "string"
+        }
+      ],
+      "response": null,
+      "doc": "simpleFSReset completely resets the KBFS folder referenced in `path`.\n   It should only be called after explicit user confirmation."
+    },
+    "simpleFSFolderSyncConfigAndStatus": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": "FolderSyncConfigAndStatus"
+    },
+    "simpleFSSetFolderSyncConfig": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        },
+        {
+          "name": "config",
+          "type": "FolderSyncConfig"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSSyncConfigAndStatus": {
+      "request": [
+        {
+          "name": "identifyBehavior",
+          "type": [
+            null,
+            "TLFIdentifyBehavior"
+          ]
+        }
+      ],
+      "response": "SyncConfigAndStatusRes"
+    },
+    "simpleFSGetFolder": {
+      "request": [
+        {
+          "name": "path",
+          "type": "KBFSPath"
+        }
+      ],
+      "response": "FolderWithFavFlags"
+    },
+    "simpleFSGetOnlineStatus": {
+      "request": [
+        {
+          "name": "clientID",
+          "type": "string"
+        }
+      ],
+      "response": "KbfsOnlineStatus"
+    },
+    "simpleFSCheckReachability": {
+      "request": [],
+      "response": null
+    },
+    "simpleFSSetDebugLevel": {
+      "request": [
+        {
+          "name": "level",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSSettings": {
+      "request": [],
+      "response": "FSSettings"
+    },
+    "simpleFSSetNotificationThreshold": {
+      "request": [
+        {
+          "name": "threshold",
+          "type": "int64"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSSetSfmiBannerDismissed": {
+      "request": [
+        {
+          "name": "dismissed",
+          "type": "boolean"
+        }
+      ],
+      "response": null,
+      "lint": "ignore"
+    },
+    "simpleFSSetSyncOnCellular": {
+      "request": [
+        {
+          "name": "syncOnCellular",
+          "type": "boolean"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSObfuscatePath": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": "string"
+    },
+    "simpleFSDeobfuscatePath": {
+      "request": [
+        {
+          "name": "path",
+          "type": "Path"
+        }
+      ],
+      "response": {
+        "type": "array",
+        "items": "string"
+      }
+    },
+    "simpleFSGetStats": {
+      "request": [],
+      "response": "SimpleFSStats"
+    },
+    "simpleFSSubscribePath": {
+      "request": [
+        {
+          "name": "identifyBehavior",
+          "type": [
+            null,
+            "TLFIdentifyBehavior"
+          ]
+        },
+        {
+          "name": "clientID",
+          "type": "string"
+        },
+        {
+          "name": "subscriptionID",
+          "type": "string"
+        },
+        {
+          "name": "kbfsPath",
+          "type": "string"
+        },
+        {
+          "name": "topic",
+          "type": "PathSubscriptionTopic"
+        },
+        {
+          "name": "deduplicateIntervalSecond",
+          "type": "int"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSSubscribeNonPath": {
+      "request": [
+        {
+          "name": "identifyBehavior",
+          "type": [
+            null,
+            "TLFIdentifyBehavior"
+          ]
+        },
+        {
+          "name": "clientID",
+          "type": "string"
+        },
+        {
+          "name": "subscriptionID",
+          "type": "string"
+        },
+        {
+          "name": "topic",
+          "type": "SubscriptionTopic"
+        },
+        {
+          "name": "deduplicateIntervalSecond",
+          "type": "int"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSUnsubscribe": {
+      "request": [
+        {
+          "name": "identifyBehavior",
+          "type": [
+            null,
+            "TLFIdentifyBehavior"
+          ]
+        },
+        {
+          "name": "clientID",
+          "type": "string"
+        },
+        {
+          "name": "subscriptionID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSStartDownload": {
+      "request": [
+        {
+          "name": "path",
+          "type": "KBFSPath"
+        },
+        {
+          "name": "isRegularDownload",
+          "type": "boolean"
+        }
+      ],
+      "response": "string"
+    },
+    "simpleFSGetDownloadInfo": {
+      "request": [
+        {
+          "name": "downloadID",
+          "type": "string"
+        }
+      ],
+      "response": "DownloadInfo"
+    },
+    "simpleFSGetDownloadStatus": {
+      "request": [],
+      "response": "DownloadStatus"
+    },
+    "simpleFSCancelDownload": {
+      "request": [
+        {
+          "name": "downloadID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSDismissDownload": {
+      "request": [
+        {
+          "name": "downloadID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSConfigureDownload": {
+      "request": [
+        {
+          "name": "cacheDirOverride",
+          "type": "string"
+        },
+        {
+          "name": "downloadDirOverride",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSMakeTempDirForUpload": {
+      "request": [],
+      "response": "string"
+    },
+    "simpleFSStartUpload": {
+      "request": [
+        {
+          "name": "sourceLocalPath",
+          "type": "string"
+        },
+        {
+          "name": "targetParentPath",
+          "type": "KBFSPath"
+        }
+      ],
+      "response": "string"
+    },
+    "simpleFSGetUploadStatus": {
+      "request": [],
+      "response": {
+        "type": "array",
+        "items": "UploadState"
+      }
+    },
+    "simpleFSCancelUpload": {
+      "request": [
+        {
+          "name": "uploadID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSDismissUpload": {
+      "request": [
+        {
+          "name": "uploadID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSGetFilesTabBadge": {
+      "request": [],
+      "response": "FilesTabBadge"
+    },
+    "simpleFSGetGUIFileContext": {
+      "request": [
+        {
+          "name": "path",
+          "type": "KBFSPath"
+        }
+      ],
+      "response": "GUIFileContext"
+    },
+    "simpleFSUserIn": {
+      "request": [
+        {
+          "name": "clientID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSUserOut": {
+      "request": [
+        {
+          "name": "clientID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSSearch": {
+      "request": [
+        {
+          "name": "query",
+          "type": "string"
+        },
+        {
+          "name": "numResults",
+          "type": "int"
+        },
+        {
+          "name": "startingFrom",
+          "type": "int"
+        }
+      ],
+      "response": "SimpleFSSearchResults"
+    },
+    "simpleFSResetIndex": {
+      "request": [],
+      "response": null
+    },
+    "simpleFSGetIndexProgress": {
+      "request": [],
+      "response": "SimpleFSIndexProgress"
+    },
+    "simpleFSCancelJournalUploads": {
+      "request": [
+        {
+          "name": "path",
+          "type": "KBFSPath"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSArchiveStart": {
+      "request": [
+        {
+          "name": "archiveJobStartPath",
+          "type": "ArchiveJobStartPath"
+        },
+        {
+          "name": "outputPath",
+          "type": "string"
+        },
+        {
+          "name": "overwriteZip",
+          "type": "boolean"
+        }
+      ],
+      "response": "SimpleFSArchiveJobDesc"
+    },
+    "simpleFSArchiveCancelOrDismissJob": {
+      "request": [
+        {
+          "name": "jobID",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "simpleFSGetArchiveStatus": {
+      "request": [],
+      "response": "SimpleFSArchiveStatus"
+    },
+    "simpleFSGetArchiveJobFreshness": {
+      "request": [
+        {
+          "name": "jobID",
+          "type": "string"
+        }
+      ],
+      "response": "SimpleFSArchiveJobFreshness"
+    },
+    "simpleFSArchiveCheckArchive": {
+      "request": [
+        {
+          "name": "archiveZipFilePath",
+          "type": "string"
+        }
+      ],
+      "response": "SimpleFSArchiveCheckArchiveResult"
+    },
+    "simpleFSArchiveAllFiles": {
+      "request": [
+        {
+          "name": "outputDir",
+          "type": "string"
+        },
+        {
+          "name": "overwriteZip",
+          "type": "boolean"
+        },
+        {
+          "name": "includePublicReadonly",
+          "type": "boolean"
+        }
+      ],
+      "response": "SimpleFSArchiveAllFilesResult"
+    },
+    "simpleFSArchiveAllGitRepos": {
+      "request": [
+        {
+          "name": "outputDir",
+          "type": "string"
+        },
+        {
+          "name": "overwriteZip",
+          "type": "boolean"
+        }
+      ],
+      "response": "SimpleFSArchiveAllGitReposResult"
+    }
+  },
+  "namespace": "keybase.1"
+}
