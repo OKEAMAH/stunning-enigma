@@ -1,0 +1,467 @@
+{
+  "protocol": "block",
+  "imports": [
+    {
+      "path": "backend_common.avdl",
+      "type": "idl"
+    }
+  ],
+  "types": [
+    {
+      "type": "enum",
+      "name": "BlockStatus",
+      "symbols": [
+        "UNKNOWN_0",
+        "LIVE_1",
+        "ARCHIVED_2"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "GetBlockRes",
+      "fields": [
+        {
+          "type": "string",
+          "name": "blockKey"
+        },
+        {
+          "type": "bytes",
+          "name": "buf"
+        },
+        {
+          "type": "int",
+          "name": "size"
+        },
+        {
+          "type": "BlockStatus",
+          "name": "status"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "GetBlockSizesRes",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "int"
+          },
+          "name": "sizes"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "BlockStatus"
+          },
+          "name": "statuses"
+        }
+      ]
+    },
+    {
+      "type": "fixed",
+      "name": "BlockRefNonce",
+      "size": "8"
+    },
+    {
+      "type": "record",
+      "name": "BlockReference",
+      "fields": [
+        {
+          "type": "BlockIdCombo",
+          "name": "bid"
+        },
+        {
+          "type": "BlockRefNonce",
+          "name": "nonce"
+        },
+        {
+          "type": "UserOrTeamID",
+          "name": "chargedTo"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BlockReferenceCount",
+      "fields": [
+        {
+          "type": "BlockReference",
+          "name": "ref"
+        },
+        {
+          "type": "int",
+          "name": "liveCount"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "DowngradeReferenceRes",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "BlockReferenceCount"
+          },
+          "name": "completed"
+        },
+        {
+          "type": "BlockReference",
+          "name": "failed"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BlockIdCount",
+      "fields": [
+        {
+          "type": "BlockIdCombo",
+          "name": "id"
+        },
+        {
+          "type": "int",
+          "name": "liveCount"
+        }
+      ],
+      "lint": "ignore"
+    },
+    {
+      "type": "record",
+      "name": "ReferenceCountRes",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "BlockIdCount"
+          },
+          "name": "counts"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BlockPingResponse",
+      "fields": []
+    },
+    {
+      "type": "record",
+      "name": "UsageStatRecord",
+      "fields": [
+        {
+          "type": "int64",
+          "name": "write"
+        },
+        {
+          "type": "int64",
+          "name": "archive"
+        },
+        {
+          "type": "int64",
+          "name": "read"
+        },
+        {
+          "type": "int64",
+          "name": "mdWrite"
+        },
+        {
+          "type": "int64",
+          "name": "gitWrite"
+        },
+        {
+          "type": "int64",
+          "name": "gitArchive"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "UsageStat",
+      "fields": [
+        {
+          "type": "UsageStatRecord",
+          "name": "bytes"
+        },
+        {
+          "type": "UsageStatRecord",
+          "name": "blocks"
+        },
+        {
+          "type": "Time",
+          "name": "mtime"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "FolderUsageStat",
+      "fields": [
+        {
+          "type": "string",
+          "name": "folderID"
+        },
+        {
+          "type": "UsageStat",
+          "name": "stats"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BlockQuotaInfo",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "FolderUsageStat"
+          },
+          "name": "folders"
+        },
+        {
+          "type": "UsageStat",
+          "name": "total"
+        },
+        {
+          "type": "int64",
+          "name": "limit"
+        },
+        {
+          "type": "int64",
+          "name": "gitLimit"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "getSessionChallenge": {
+      "request": [],
+      "response": "ChallengeInfo"
+    },
+    "authenticateSession": {
+      "request": [
+        {
+          "name": "signature",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "putBlock": {
+      "request": [
+        {
+          "name": "bid",
+          "type": "BlockIdCombo"
+        },
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "blockKey",
+          "type": "string"
+        },
+        {
+          "name": "buf",
+          "type": "bytes"
+        }
+      ],
+      "response": null,
+      "compression_type": "none"
+    },
+    "putBlockAgain": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "ref",
+          "type": "BlockReference"
+        },
+        {
+          "name": "blockKey",
+          "type": "string"
+        },
+        {
+          "name": "buf",
+          "type": "bytes"
+        }
+      ],
+      "response": null,
+      "compression_type": "none"
+    },
+    "getBlock": {
+      "request": [
+        {
+          "name": "bid",
+          "type": "BlockIdCombo"
+        },
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "sizeOnly",
+          "type": "boolean"
+        }
+      ],
+      "response": "GetBlockRes",
+      "compression_type": "none"
+    },
+    "getBlockSizes": {
+      "request": [
+        {
+          "name": "bids",
+          "type": {
+            "type": "array",
+            "items": "BlockIdCombo"
+          }
+        },
+        {
+          "name": "folder",
+          "type": "string"
+        }
+      ],
+      "response": "GetBlockSizesRes"
+    },
+    "addReference": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "ref",
+          "type": "BlockReference"
+        }
+      ],
+      "response": null
+    },
+    "delReference": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "ref",
+          "type": "BlockReference"
+        }
+      ],
+      "response": null
+    },
+    "archiveReference": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "refs",
+          "type": {
+            "type": "array",
+            "items": "BlockReference"
+          }
+        }
+      ],
+      "response": {
+        "type": "array",
+        "items": "BlockReference"
+      }
+    },
+    "delReferenceWithCount": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "refs",
+          "type": {
+            "type": "array",
+            "items": "BlockReference"
+          }
+        }
+      ],
+      "response": "DowngradeReferenceRes"
+    },
+    "archiveReferenceWithCount": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "refs",
+          "type": {
+            "type": "array",
+            "items": "BlockReference"
+          }
+        }
+      ],
+      "response": "DowngradeReferenceRes"
+    },
+    "getReferenceCount": {
+      "request": [
+        {
+          "name": "folder",
+          "type": "string"
+        },
+        {
+          "name": "ids",
+          "type": {
+            "type": "array",
+            "items": "BlockIdCombo"
+          }
+        },
+        {
+          "name": "status",
+          "type": "BlockStatus"
+        }
+      ],
+      "response": "ReferenceCountRes"
+    },
+    "getUserQuotaInfo": {
+      "request": [],
+      "response": "bytes"
+    },
+    "getTeamQuotaInfo": {
+      "request": [
+        {
+          "name": "tid",
+          "type": "TeamID"
+        }
+      ],
+      "response": "bytes"
+    },
+    "getUserQuotaInfo2": {
+      "request": [
+        {
+          "name": "includeFolders",
+          "type": "boolean"
+        }
+      ],
+      "response": "BlockQuotaInfo"
+    },
+    "getTeamQuotaInfo2": {
+      "request": [
+        {
+          "name": "tid",
+          "type": "TeamID"
+        },
+        {
+          "name": "includeFolders",
+          "type": "boolean"
+        }
+      ],
+      "response": "BlockQuotaInfo"
+    },
+    "blockPing": {
+      "request": [],
+      "response": "BlockPingResponse"
+    }
+  },
+  "namespace": "keybase.1",
+  "compression_type": "gzip"
+}
