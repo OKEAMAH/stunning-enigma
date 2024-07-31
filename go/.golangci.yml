@@ -1,0 +1,16 @@
+run:
+  skip-files:
+    - prot.go
+    - 'cmd_wallet.*.go'
+
+linters-settings:
+  gocritic:
+    disabled-checks:
+      - ifElseChain
+      - elseif
+
+linters:
+  enable:
+    - gofmt
+    - gocritic
+    - unconvert
