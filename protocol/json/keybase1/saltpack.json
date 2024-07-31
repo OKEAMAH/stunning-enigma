@@ -1,0 +1,583 @@
+{
+  "protocol": "saltpack",
+  "imports": [
+    {
+      "path": "common.avdl",
+      "type": "idl"
+    },
+    {
+      "path": "identify_common.avdl",
+      "type": "idl"
+    }
+  ],
+  "types": [
+    {
+      "type": "enum",
+      "name": "AuthenticityType",
+      "symbols": [
+        "SIGNED_0",
+        "REPUDIABLE_1",
+        "ANONYMOUS_2"
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackEncryptOptions",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "recipients"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "teamRecipients"
+        },
+        {
+          "type": "AuthenticityType",
+          "name": "authenticityType"
+        },
+        {
+          "type": "boolean",
+          "name": "useEntityKeys"
+        },
+        {
+          "type": "boolean",
+          "name": "useDeviceKeys"
+        },
+        {
+          "type": "boolean",
+          "name": "usePaperKeys"
+        },
+        {
+          "type": "boolean",
+          "name": "noSelfEncrypt"
+        },
+        {
+          "type": "boolean",
+          "name": "binary"
+        },
+        {
+          "type": "int",
+          "name": "saltpackVersion"
+        },
+        {
+          "type": "boolean",
+          "name": "noForcePoll"
+        },
+        {
+          "type": "boolean",
+          "name": "useKBFSKeysOnlyForTesting"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackDecryptOptions",
+      "fields": [
+        {
+          "type": "boolean",
+          "name": "interactive"
+        },
+        {
+          "type": "boolean",
+          "name": "forceRemoteCheck"
+        },
+        {
+          "type": "boolean",
+          "name": "usePaperKey"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackSignOptions",
+      "fields": [
+        {
+          "type": "boolean",
+          "name": "detached"
+        },
+        {
+          "type": "boolean",
+          "name": "binary"
+        },
+        {
+          "type": "int",
+          "name": "saltpackVersion"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackVerifyOptions",
+      "fields": [
+        {
+          "type": "string",
+          "name": "signedBy"
+        },
+        {
+          "type": "bytes",
+          "name": "signature"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackEncryptResult",
+      "fields": [
+        {
+          "type": "boolean",
+          "name": "usedUnresolvedSBS",
+          "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "unresolvedSBSAssertion",
+          "lint": "ignore"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackEncryptedMessageInfo",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "Device"
+          },
+          "name": "devices"
+        },
+        {
+          "type": "int",
+          "name": "numAnonReceivers"
+        },
+        {
+          "type": "boolean",
+          "name": "receiverIsAnon"
+        },
+        {
+          "type": "SaltpackSender",
+          "name": "sender"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackFrontendEncryptOptions",
+      "fields": [
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "recipients"
+        },
+        {
+          "type": "boolean",
+          "name": "signed"
+        },
+        {
+          "type": "boolean",
+          "name": "includeSelf"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackEncryptStringResult",
+      "fields": [
+        {
+          "type": "boolean",
+          "name": "usedUnresolvedSBS",
+          "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "unresolvedSBSAssertion",
+          "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "ciphertext"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackEncryptFileResult",
+      "fields": [
+        {
+          "type": "boolean",
+          "name": "usedUnresolvedSBS",
+          "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "unresolvedSBSAssertion",
+          "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "filename"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackPlaintextResult",
+      "fields": [
+        {
+          "type": "SaltpackEncryptedMessageInfo",
+          "name": "info"
+        },
+        {
+          "type": "string",
+          "name": "plaintext"
+        },
+        {
+          "type": "boolean",
+          "name": "signed"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackFileResult",
+      "fields": [
+        {
+          "type": "SaltpackEncryptedMessageInfo",
+          "name": "info"
+        },
+        {
+          "type": "string",
+          "name": "decryptedFilename"
+        },
+        {
+          "type": "boolean",
+          "name": "signed"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackVerifyResult",
+      "fields": [
+        {
+          "type": "KID",
+          "name": "signingKID"
+        },
+        {
+          "type": "SaltpackSender",
+          "name": "sender"
+        },
+        {
+          "type": "string",
+          "name": "plaintext"
+        },
+        {
+          "type": "boolean",
+          "name": "verified"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SaltpackVerifyFileResult",
+      "fields": [
+        {
+          "type": "KID",
+          "name": "signingKID"
+        },
+        {
+          "type": "SaltpackSender",
+          "name": "sender"
+        },
+        {
+          "type": "string",
+          "name": "verifiedFilename"
+        },
+        {
+          "type": "boolean",
+          "name": "verified"
+        }
+      ]
+    }
+  ],
+  "messages": {
+    "saltpackEncrypt": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "source",
+          "type": "Stream"
+        },
+        {
+          "name": "sink",
+          "type": "Stream"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackEncryptOptions"
+        }
+      ],
+      "response": "SaltpackEncryptResult"
+    },
+    "saltpackDecrypt": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "source",
+          "type": "Stream"
+        },
+        {
+          "name": "sink",
+          "type": "Stream"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackDecryptOptions"
+        }
+      ],
+      "response": "SaltpackEncryptedMessageInfo"
+    },
+    "saltpackSign": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "source",
+          "type": "Stream"
+        },
+        {
+          "name": "sink",
+          "type": "Stream"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackSignOptions"
+        }
+      ],
+      "response": null
+    },
+    "saltpackVerify": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "source",
+          "type": "Stream"
+        },
+        {
+          "name": "sink",
+          "type": "Stream"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackVerifyOptions"
+        }
+      ],
+      "response": null
+    },
+    "saltpackEncryptString": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "plaintext",
+          "type": "string"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackFrontendEncryptOptions"
+        }
+      ],
+      "response": "SaltpackEncryptStringResult"
+    },
+    "saltpackEncryptStringToTextFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "plaintext",
+          "type": "string"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackFrontendEncryptOptions"
+        }
+      ],
+      "response": "SaltpackEncryptFileResult"
+    },
+    "saltpackEncryptFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "filename",
+          "type": "string"
+        },
+        {
+          "name": "destinationDir",
+          "type": "string"
+        },
+        {
+          "name": "opts",
+          "type": "SaltpackFrontendEncryptOptions"
+        }
+      ],
+      "response": "SaltpackEncryptFileResult"
+    },
+    "saltpackDecryptString": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "ciphertext",
+          "type": "string"
+        }
+      ],
+      "response": "SaltpackPlaintextResult"
+    },
+    "saltpackDecryptFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "encryptedFilename",
+          "type": "string"
+        },
+        {
+          "name": "destinationDir",
+          "type": "string"
+        }
+      ],
+      "response": "SaltpackFileResult"
+    },
+    "saltpackSignString": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "plaintext",
+          "type": "string"
+        }
+      ],
+      "response": "string"
+    },
+    "saltpackSignStringToTextFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "plaintext",
+          "type": "string"
+        }
+      ],
+      "response": "string"
+    },
+    "saltpackSignFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "filename",
+          "type": "string"
+        },
+        {
+          "name": "destinationDir",
+          "type": "string"
+        }
+      ],
+      "response": "string"
+    },
+    "saltpackSaveCiphertextToFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "ciphertext",
+          "type": "string"
+        }
+      ],
+      "response": "string"
+    },
+    "saltpackSaveSignedMsgToFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "signedMsg",
+          "type": "string"
+        }
+      ],
+      "response": "string"
+    },
+    "saltpackVerifyString": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "signedMsg",
+          "type": "string"
+        }
+      ],
+      "response": "SaltpackVerifyResult"
+    },
+    "saltpackVerifyFile": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "signedFilename",
+          "type": "string"
+        },
+        {
+          "name": "destinationDir",
+          "type": "string"
+        }
+      ],
+      "response": "SaltpackVerifyFileResult"
+    }
+  },
+  "namespace": "keybase.1"
+}
