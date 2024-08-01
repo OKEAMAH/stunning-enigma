@@ -17,7 +17,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.7.2-0.20180927150649-699df6a3acf6
-	github.com/docopt/docopt-go v0.0.0-20160216232012-784ddc588536
+	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/dustin/go-humanize v1.0.0
 	github.com/eapache/channels v1.1.0
 	github.com/gammazero/workerpool v0.0.0-20181230203049-86a96b5d5d92
