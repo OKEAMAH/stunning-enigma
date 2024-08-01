@@ -14,7 +14,7 @@ require (
 	github.com/blevesearch/bleve v0.8.2-0.20191030071327-189ee421f71e
 	github.com/btcsuite/btcutil v0.0.0-20180706230648-ab6388e0c60a
 	github.com/buger/jsonparser v1.1.1
-	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a
+	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/davecgh/go-spew v1.1.1
 	github.com/deckarep/golang-set v1.7.2-0.20180927150649-699df6a3acf6
 	github.com/docopt/docopt-go v0.0.0-20160216232012-784ddc588536
