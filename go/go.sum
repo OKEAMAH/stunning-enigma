@@ -510,6 +510,8 @@ github.com/keybase/go-crypto v0.0.0-20200123153347-de78d2cb44f4 h1:cTxwSmnaqLoo+
 github.com/keybase/go-crypto v0.0.0-20200123153347-de78d2cb44f4/go.mod h1:ghbZscTyKdM07+Fw3KSi0hcJm+AlEUWj8QLlPtijN/M=
 github.com/keybase/go-framed-msgpack-rpc v0.0.0-20230103225103-1f052922b096 h1:rMDGkwIszgGP7HodB/YdMVT39mMI5s+LUI6DOrJO0DE=
 github.com/keybase/go-framed-msgpack-rpc v0.0.0-20230103225103-1f052922b096/go.mod h1:XO67nMjltHJ8OsBWnFiDU1F67wR+rtJB21NXtb1TKyA=
+github.com/keybase/go-framed-msgpack-rpc v0.0.0-20231213201819-78fffcb30e42 h1:r1ZY/j20qhaxcnLXRYf4YJ1hVHxOUqkcXW1AWbtlwRc=
+github.com/keybase/go-framed-msgpack-rpc v0.0.0-20231213201819-78fffcb30e42/go.mod h1:oJqYYlOzuyghCL4YfZ0hDLZOyJYcjpRYc2S79aitIBE=
 github.com/keybase/go-git v4.0.0-rc9.0.20190209005256-3a78daa8ce8e+incompatible h1:vGk0ZpLiX9X58raUx86zSlmvmJmEEoUBz/Wr0aIYHIs=
 github.com/keybase/go-git v4.0.0-rc9.0.20190209005256-3a78daa8ce8e+incompatible/go.mod h1:UXHGv5gdZq3WKJwTqUz51rTso8HiW4pPAq6h8bCBGUY=
 github.com/keybase/go-jsonw v0.0.0-20200325173637-df90f282c233 h1:zLk+cB/0ShMCBcgBOXYgellLZiZahXFicJleKyrlqiM=
@@ -542,6 +544,8 @@ github.com/keybase/keybase-test-vectors v1.0.12-0.20200309162119-ea1e58fecd5d h1
 github.com/keybase/keybase-test-vectors v1.0.12-0.20200309162119-ea1e58fecd5d/go.mod h1:X9vCtvYYyA79MN7GvnlYKjIUkxlo5e0uZ+dYL5kTBqg=
 github.com/keybase/msgpackzip v0.0.0-20221220225959-4abf538d2b9c h1:PRG2AXSelSy7MiDI+PwJR2QSqI1N3OybRUutsMiHtpo=
 github.com/keybase/msgpackzip v0.0.0-20221220225959-4abf538d2b9c/go.mod h1:DkylHDco/FLr1+GM6wg0GF4E3CCKov54MSYojKYAbS0=
+github.com/keybase/msgpackzip v0.0.0-20231213201432-ee2f464d1f46 h1:HZwgh9xppsgOtC/KFuPOUKqtR70tmqoZKDdzFzMgofk=
+github.com/keybase/msgpackzip v0.0.0-20231213201432-ee2f464d1f46/go.mod h1:yBUdIgz7FWt9P/poJyPJ75v9WPDITnKGfwive77P8O4=
 github.com/keybase/pipeliner v0.0.0-20231213214924-f648db4bba63 h1:zwjxaJp3XkHxS5jBFbQjcy2yHiUecymXB3MXPf0U7tg=
 github.com/keybase/pipeliner v0.0.0-20231213214924-f648db4bba63/go.mod h1:3ui+OKQTLV41wZxubSXA4oWfqg1/YSrpJ4Zs86z26OM=
 github.com/keybase/saltpack v0.0.0-20231213211625-726bb684c617 h1:z0BITnIaKvnqlZuK0BroCaZ0rMLIwFJN1/lttLG3xvw=
